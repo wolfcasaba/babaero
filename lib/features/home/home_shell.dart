@@ -6,6 +6,7 @@ import '../chat/chat_list_screen.dart';
 import '../discover/discover_screen.dart';
 import '../matches/matches_screen.dart';
 import '../profile/my_profile_screen.dart';
+import '../timeline/timeline_screen.dart';
 
 /// Root shell with a bottom nav. Keeps each tab's state alive via IndexedStack.
 class HomeShell extends ConsumerStatefulWidget {
@@ -20,6 +21,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 
   static const _tabs = [
     DiscoverScreen(),
+    TimelineScreen(),
     MatchesScreen(),
     ChatListScreen(),
     MyProfileScreen(),
@@ -46,6 +48,10 @@ class _HomeShellState extends ConsumerState<HomeShell> {
             NavigationDestination(
               icon: Icon(LucideIcons.flame),
               label: 'Discover',
+            ),
+            NavigationDestination(
+              icon: Icon(LucideIcons.newspaper),
+              label: 'Feed',
             ),
             NavigationDestination(
               icon: Icon(LucideIcons.heart),
