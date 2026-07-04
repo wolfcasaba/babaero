@@ -52,6 +52,7 @@ dependencies:
 
   # Media / input
   image_picker: ^1.1.2
+  shared_preferences: ^2.5.5
 
 dev_dependencies:
   flutter_test:

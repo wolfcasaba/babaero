@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../core/supabase/backend_settings_dialog.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/brand_widgets.dart';
 import '../auth/auth_screen.dart';
@@ -21,6 +22,10 @@ class WelcomeScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                const Align(
+                  alignment: Alignment.centerRight,
+                  child: BackendSettingsButton(),
+                ),
                 const Spacer(flex: 2),
                 Row(
                   children: [

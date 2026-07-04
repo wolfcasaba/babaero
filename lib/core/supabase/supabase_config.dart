@@ -1,5 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'backend_prefs.dart';
+
 /// Backend config for Babaero.
 ///
 /// Targets Babaero's OWN isolated local Supabase stack on the Oracle box
@@ -37,14 +39,28 @@ class SupabaseConfig {
   /// (preview repos, no backend calls) — mirrors the recipewiser pattern.
   static bool get isConfigured => publishableKey.isNotEmpty;
 
+  /// Effective values after applying any runtime override (set in [init]).
+  static String _effectiveUrl = url;
+  static String _effectiveSecret = accessSecret;
+
+  /// The backend URL actually in use (runtime override or compile-time default).
+  static String get effectiveUrl => _effectiveUrl;
+
   static bool _initialized = false;
 
   static Future<void> init() async {
     if (_initialized || !isConfigured) return;
+    // A runtime override (set in-app) wins over the compile-time defaults, so
+    // the app can follow a tunnel to the local Supabase without a rebuild.
+    final (overrideUrl, overrideSecret) = await BackendPrefs.load();
+    _effectiveUrl = overrideUrl ?? url;
+    _effectiveSecret = overrideSecret ?? accessSecret;
     await Supabase.initialize(
-      url: url,
+      url: _effectiveUrl,
       publishableKey: publishableKey,
-      headers: accessSecret.isEmpty ? null : {'X-Babaero-Access': accessSecret},
+      headers: _effectiveSecret.isEmpty
+          ? null
+          : {'X-Babaero-Access': _effectiveSecret},
     );
     _initialized = true;
   }
