@@ -27,6 +27,12 @@ class SupabaseConfig {
   /// Dedicated Postgres schema for Babaero (exposed via PostgREST db-schemas).
   static const String schema = 'babaero';
 
+  /// Optional shared secret sent on every request as `X-Babaero-Access`.
+  /// When the backend is reached through a gated tunnel, only clients that
+  /// send this header get through — i.e. only this app. Empty by default.
+  static const String accessSecret =
+      String.fromEnvironment('ACCESS_SECRET', defaultValue: '');
+
   /// True when a real key is present. When false the app runs in mock mode
   /// (preview repos, no backend calls) — mirrors the recipewiser pattern.
   static bool get isConfigured => publishableKey.isNotEmpty;
@@ -35,7 +41,11 @@ class SupabaseConfig {
 
   static Future<void> init() async {
     if (_initialized || !isConfigured) return;
-    await Supabase.initialize(url: url, publishableKey: publishableKey);
+    await Supabase.initialize(
+      url: url,
+      publishableKey: publishableKey,
+      headers: accessSecret.isEmpty ? null : {'X-Babaero-Access': accessSecret},
+    );
     _initialized = true;
   }
 
