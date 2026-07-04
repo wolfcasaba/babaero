@@ -105,8 +105,25 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
 
   String _friendly(Object e) {
     final s = e.toString();
-    if (s.contains('already registered')) return 'That email is already in use.';
+    if (s.contains('SocketException') ||
+        s.contains('Failed host lookup') ||
+        s.contains('ClientException') ||
+        s.contains('Connection') ||
+        s.contains('timed out') ||
+        s.contains('XMLHttpRequest')) {
+      return 'Can\'t reach the server. Check your internet and try again.';
+    }
+    if (s.contains('already registered') || s.contains('User already')) {
+      return 'That email is already in use. Try signing in.';
+    }
     if (s.contains('Invalid login')) return 'Wrong email or password.';
+    if (s.contains('Password should') || s.contains('weak')) {
+      return 'Password too weak — use at least 6 characters.';
+    }
+    if (s.contains('sending confirmation') || s.contains('rate limit')) {
+      return 'Email confirmation is failing. Ask the admin to turn off '
+          '“Confirm email”, then try again.';
+    }
     return 'Something went wrong. Please try again.';
   }
 
