@@ -1,0 +1,246 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
+
+import '../../core/theme/app_colors.dart';
+import '../../core/widgets/brand_widgets.dart';
+import 'data/profile_provider.dart';
+
+const _interestChoices = [
+  'Travel', 'Foodie', 'Beach', 'Karaoke', 'Movies', 'Fitness', 'Cooking',
+  'Faith', 'Family', 'Dogs', 'Cats', 'Photography', 'Books', 'Music',
+  'Hiking', 'Business', 'Dancing', 'Gaming',
+];
+
+/// Collected right after sign-up — writes the member's babaero.profiles row.
+class OnboardingSetupScreen extends ConsumerStatefulWidget {
+  const OnboardingSetupScreen({super.key});
+
+  @override
+  ConsumerState<OnboardingSetupScreen> createState() =>
+      _OnboardingSetupScreenState();
+}
+
+class _OnboardingSetupScreenState
+    extends ConsumerState<OnboardingSetupScreen> {
+  final _name = TextEditingController();
+  final _age = TextEditingController();
+  final _country = TextEditingController();
+  final _city = TextEditingController();
+  final _languages = TextEditingController();
+  final _bio = TextEditingController();
+  String _role = 'foreigner';
+  String _gender = 'male';
+  final Set<String> _interests = {};
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    for (final c in [_name, _age, _country, _city, _languages, _bio]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_name.text.trim().isEmpty) {
+      setState(() => _error = 'Please enter your name.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await ref.read(profileRepositoryProvider).upsert(
+            name: _name.text.trim(),
+            age: int.tryParse(_age.text.trim()),
+            gender: _gender,
+            role: _role,
+            country: _country.text.trim(),
+            city: _city.text.trim(),
+            languages: _languages.text.trim(),
+            bio: _bio.text.trim(),
+            interests: _interests.toList(),
+          );
+      ref.invalidate(myProfileProvider);
+      if (mounted) Navigator.of(context).pop();
+    } catch (_) {
+      setState(() => _error = 'Could not save your profile. Try again.');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Set up your profile')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Tell us about you',
+                style: GoogleFonts.poppins(
+                    fontSize: 20, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            Text('Verified, complete profiles get far more matches.',
+                style: TextStyle(color: Theme.of(context).colorScheme.outline)),
+            const SizedBox(height: 20),
+            _label('I am a'),
+            _SegToggle(
+              options: const {'foreigner': 'Foreigner', 'local': 'Filipina/o'},
+              value: _role,
+              onChanged: (v) => setState(() => _role = v),
+            ),
+            const SizedBox(height: 16),
+            _label('Gender'),
+            _SegToggle(
+              options: const {
+                'male': 'Male',
+                'female': 'Female',
+                'other': 'Other'
+              },
+              value: _gender,
+              onChanged: (v) => setState(() => _gender = v),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _name,
+              decoration: const InputDecoration(hintText: 'Display name'),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _age,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(hintText: 'Age'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _country,
+                    decoration: const InputDecoration(hintText: 'Country'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _city,
+              decoration: const InputDecoration(hintText: 'City'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _languages,
+              decoration:
+                  const InputDecoration(hintText: 'Languages (e.g. English, Tagalog)'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _bio,
+              maxLines: 3,
+              decoration: const InputDecoration(hintText: 'Short bio'),
+            ),
+            const SizedBox(height: 20),
+            _label('Interests'),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _interestChoices.map((t) {
+                final on = _interests.contains(t);
+                return FilterChip(
+                  label: Text(t),
+                  selected: on,
+                  showCheckmark: false,
+                  backgroundColor:
+                      Theme.of(context).colorScheme.surfaceContainerHighest,
+                  selectedColor: AppColors.primary,
+                  side: BorderSide.none,
+                  labelStyle: TextStyle(
+                    color: on
+                        ? Colors.white
+                        : Theme.of(context).colorScheme.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  onSelected: (_) => setState(
+                    () => on ? _interests.remove(t) : _interests.add(t),
+                  ),
+                );
+              }).toList(),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 16),
+              Text(_error!, style: const TextStyle(color: AppColors.danger)),
+            ],
+            const SizedBox(height: 24),
+            _busy
+                ? const Center(child: CircularProgressIndicator())
+                : GradientButton(label: 'Start meeting people', onPressed: _save),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _label(String t) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Text(t,
+            style: GoogleFonts.poppins(
+                fontSize: 14, fontWeight: FontWeight.w600)),
+      );
+}
+
+class _SegToggle extends StatelessWidget {
+  final Map<String, String> options;
+  final String value;
+  final ValueChanged<String> onChanged;
+  const _SegToggle({
+    required this.options,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: options.entries.map((e) {
+          final on = e.key == value;
+          return Expanded(
+            child: GestureDetector(
+              onTap: () => onChanged(e.key),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  gradient: on ? AppColors.brandGradient : null,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  e.value,
+                  style: TextStyle(
+                    color: on ? Colors.white : cs.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
