@@ -13,17 +13,18 @@ import 'backend_prefs.dart';
 class SupabaseConfig {
   SupabaseConfig._();
 
-  /// Babaero's local Supabase API gateway (Kong) on the Oracle box.
-  /// Android emulator → 10.0.2.2, physical device → the box's LAN IP.
+  /// Babaero's hosted Supabase project (reachable from any device, no tunnel).
+  /// Overridable at build time or in-app (runtime override).
   static const String url = String.fromEnvironment(
     'SUPABASE_URL',
-    defaultValue: 'http://127.0.0.1:54331',
+    defaultValue: 'https://wlcrqlfqpxgtcftqllcp.supabase.co',
   );
 
-  /// Local publishable key from `supabase status`. Public by design.
+  /// Public anon key for the hosted project. Public by design.
   static const String publishableKey = String.fromEnvironment(
     'SUPABASE_ANON_KEY',
-    defaultValue: 'sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH',
+    defaultValue:
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndsY3JxbGZxcHhndGNmdHFsbGNwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxMTk5OTIsImV4cCI6MjA5ODY5NTk5Mn0.DHUK-LuFlAwS4HXrIJ2eowb3yZswGt_q5im0hXy_sf0',
   );
 
   /// Dedicated Postgres schema for Babaero (exposed via PostgREST db-schemas).

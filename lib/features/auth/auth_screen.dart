@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/brand_widgets.dart';
+import '../profile/data/profile_provider.dart';
 import '../profile/onboarding_setup_screen.dart';
 import 'data/auth_provider.dart';
 
@@ -46,9 +47,17 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     try {
       final repo = ref.read(authRepositoryProvider);
       if (_signUp) {
-        await repo.signUp(email: email, password: pw);
+        final res = await repo.signUp(email: email, password: pw);
         if (!mounted) return;
-        // New account → collect profile, then drop back to the gate (Home).
+        if (res.session == null) {
+          // Email confirmation is required (no immediate session) — tell the
+          // user to confirm, then switch to sign-in.
+          await _showConfirmEmail(email);
+          if (!mounted) return;
+          setState(() => _signUp = false);
+          return;
+        }
+        // Immediate session → collect profile, then drop back to the gate.
         await Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const OnboardingSetupScreen()),
         );
@@ -57,6 +66,16 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       } else {
         await repo.signIn(email: email, password: pw);
         if (!mounted) return;
+        // First sign-in without a profile yet → collect it.
+        final hasProfile =
+            await ref.read(profileRepositoryProvider).getMine() != null;
+        if (!mounted) return;
+        if (!hasProfile) {
+          await Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const OnboardingSetupScreen()),
+          );
+          if (!mounted) return;
+        }
         Navigator.of(context).popUntil((r) => r.isFirst);
       }
     } catch (e) {
@@ -64,6 +83,24 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _showConfirmEmail(String email) {
+    return showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirm your email'),
+        content: Text(
+          'We sent a confirmation link to $email. Tap it, then sign in here.',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   String _friendly(Object e) {
