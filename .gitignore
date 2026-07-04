@@ -43,3 +43,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Local code-RAG index (regenerate with: node tools/flutter-rag.mjs --reindex)
+dev-tools/flutter-code-index.json
