@@ -36,7 +36,8 @@ class SupabaseStoryRepository implements StoryRepository {
         .from('stories')
         .select()
         .gt('created_at', since)
-        .order('created_at', ascending: true);
+        .order('created_at', ascending: true)
+        .limit(300);
     final storyRows = (rows as List).cast<Map<String, dynamic>>();
     if (storyRows.isEmpty) return [];
 

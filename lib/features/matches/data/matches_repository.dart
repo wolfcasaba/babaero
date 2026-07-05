@@ -1,3 +1,5 @@
+import 'package:supabase_flutter/supabase_flutter.dart' show CountOption;
+
 import '../../../core/supabase/supabase_config.dart';
 import '../../discover/data/profile_models.dart';
 
@@ -53,7 +55,8 @@ class SupabaseMatchesRepository implements MatchesRepository {
     final rows = await SupabaseConfig.db
         .from('matches')
         .select('user_low, user_high')
-        .or('user_low.eq.$me,user_high.eq.$me');
+        .or('user_low.eq.$me,user_high.eq.$me')
+        .limit(500);
     final otherIds = <String>[
       for (final r in rows as List)
         (r['user_low'] == me ? r['user_high'] : r['user_low']) as String,
@@ -72,9 +75,13 @@ class SupabaseMatchesRepository implements MatchesRepository {
   Future<int> likesYouCount() async {
     final me = _uid;
     if (me == null) return 0;
-    final rows =
-        await SupabaseConfig.db.from('likes').select('liker_id').eq('liked_id', me);
-    return (rows as List).length;
+    // HEAD count — asks Postgres for the row count without transferring rows,
+    // so a popular profile doesn't load thousands of like rows for a badge.
+    final count = await SupabaseConfig.db
+        .from('likes')
+        .count(CountOption.exact)
+        .eq('liked_id', me);
+    return count;
   }
 
   @override
@@ -85,7 +92,8 @@ class SupabaseMatchesRepository implements MatchesRepository {
         .from('likes')
         .select('liker_id')
         .eq('liked_id', me)
-        .order('created_at', ascending: false);
+        .order('created_at', ascending: false)
+        .limit(100);
     final likerIds = [
       for (final r in rows as List) (r as Map)['liker_id'] as String,
     ];
@@ -113,7 +121,8 @@ class SupabaseMatchesRepository implements MatchesRepository {
     final rows = await SupabaseConfig.db
         .from('likes')
         .select('liked_id')
-        .eq('liker_id', me);
+        .eq('liker_id', me)
+        .limit(2000);
     return {
       for (final r in rows as List) (r as Map)['liked_id'] as String,
     };

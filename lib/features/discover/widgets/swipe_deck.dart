@@ -305,6 +305,7 @@ class _CardWithStamps extends StatelessWidget {
               CachedNetworkImage(
                 imageUrl: shownPhoto,
                 fit: BoxFit.cover,
+                fadeInDuration: const Duration(milliseconds: 250),
                 errorWidget: (_, _, _) => const SizedBox.shrink(),
               )
             else

@@ -6,6 +6,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/brand_widgets.dart';
+import '../../core/widgets/error_retry.dart';
 import '../discover/data/profile_models.dart';
 import '../matches/data/matches_provider.dart';
 import '../profile/profile_detail_screen.dart';
@@ -22,7 +23,10 @@ class WhoLikedYouScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Likes you')),
       body: likersAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Could not load.\n$e')),
+        error: (e, _) => ErrorRetry(
+          message: 'Could not load your likes.',
+          onRetry: () => ref.invalidate(whoLikedMeProvider),
+        ),
         data: (likers) {
           if (likers.isEmpty) return const _NoLikes();
           return CustomScrollView(
@@ -110,6 +114,7 @@ class _LikerCard extends StatelessWidget {
               CachedNetworkImage(
                 imageUrl: profile.photoUrl!,
                 fit: BoxFit.cover,
+                fadeInDuration: const Duration(milliseconds: 250),
                 errorWidget: (_, _, _) => const SizedBox.shrink(),
               )
             else

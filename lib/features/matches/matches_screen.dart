@@ -1,11 +1,13 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/brand_widgets.dart';
+import '../../core/widgets/skeleton.dart';
 import '../discover/data/profile_models.dart';
 import '../premium/who_liked_you_screen.dart';
 import '../profile/profile_detail_screen.dart';
@@ -46,10 +48,22 @@ class MatchesScreen extends ConsumerWidget {
               ),
             ),
             if (matchesAsync.isLoading)
-              const SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.all(40),
-                  child: Center(child: CircularProgressIndicator()),
+              SliverPadding(
+                padding: const EdgeInsets.all(16),
+                sliver: SliverGrid(
+                  gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 14,
+                    crossAxisSpacing: 14,
+                    childAspectRatio: 0.74,
+                  ),
+                  delegate: SliverChildBuilderDelegate(
+                    (context, i) => Skeleton(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    childCount: 4,
+                  ),
                 ),
               )
             else if (matches.isEmpty)
@@ -66,7 +80,10 @@ class MatchesScreen extends ConsumerWidget {
                     childAspectRatio: 0.74,
                   ),
                   delegate: SliverChildBuilderDelegate(
-                    (context, i) => _MatchCard(profile: matches[i]),
+                    (context, i) => _MatchCard(profile: matches[i])
+                        .animate()
+                        .fadeIn(duration: 240.ms, delay: (40 * i).ms)
+                        .slideY(begin: 0.06, curve: Curves.easeOut),
                     childCount: matches.length,
                   ),
                 ),
@@ -191,6 +208,7 @@ class _MatchCard extends StatelessWidget {
               CachedNetworkImage(
                 imageUrl: profile.photoUrl!,
                 fit: BoxFit.cover,
+                fadeInDuration: const Duration(milliseconds: 250),
                 errorWidget: (_, _, _) => const SizedBox.shrink(),
               )
             else

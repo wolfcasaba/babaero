@@ -19,7 +19,8 @@ class ChatRepository {
         .from('conversations')
         .select('id, user_low, user_high, last_message_at')
         .or('user_low.eq.$me,user_high.eq.$me')
-        .order('last_message_at', ascending: false);
+        .order('last_message_at', ascending: false)
+        .limit(300);
 
     final convList = (convs as List).cast<Map<String, dynamic>>();
     if (convList.isEmpty) return [];
@@ -106,13 +107,17 @@ class ChatRepository {
   }
 
   Future<List<Message>> messages(String conversationId) async {
+    // Bounded to the most recent 500 (fetched desc, then flipped to ascending
+    // for display) so a very long thread never loads its entire history.
     final rows = await SupabaseConfig.db
         .from('messages')
         .select()
         .eq('conversation_id', conversationId)
-        .order('created_at', ascending: true);
+        .order('created_at', ascending: false)
+        .limit(500);
     return [
-      for (final m in rows as List) Message.fromMap(m as Map<String, dynamic>)
+      for (final m in (rows as List).reversed)
+        Message.fromMap(m as Map<String, dynamic>)
     ];
   }
 

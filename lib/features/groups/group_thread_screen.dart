@@ -6,6 +6,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/supabase/supabase_config.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/widgets/error_retry.dart';
 import '../chat/data/translation_service.dart';
 import '../chat/widgets/message_widgets.dart';
 import '../discover/data/profile_models.dart';
@@ -168,7 +169,11 @@ class _GroupThreadScreenState extends ConsumerState<GroupThreadScreen> {
           Expanded(
             child: messagesAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('Chat unavailable.\n$e')),
+              error: (e, _) => ErrorRetry(
+                message: 'Chat unavailable.',
+                onRetry: () =>
+                    ref.invalidate(groupMessagesStreamProvider(widget.groupId)),
+              ),
               data: (messages) {
                 if (messages.isEmpty) {
                   return const _EmptyThread();

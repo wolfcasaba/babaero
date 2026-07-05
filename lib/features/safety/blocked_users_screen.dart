@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/widgets/brand_widgets.dart';
+import '../../core/widgets/error_retry.dart';
 import '../discover/data/discover_provider.dart';
 import '../discover/data/profile_models.dart';
 import 'data/safety_provider.dart';
@@ -19,7 +20,10 @@ class BlockedUsersScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Safety & privacy')),
       body: blocked.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Could not load.\n$e')),
+        error: (e, _) => ErrorRetry(
+          message: 'Could not load your blocked list.',
+          onRetry: () => ref.invalidate(blockedProfilesProvider),
+        ),
         data: (list) {
           if (list.isEmpty) return const _NoBlocks();
           return ListView(

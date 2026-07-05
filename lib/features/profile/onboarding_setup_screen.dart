@@ -1,10 +1,14 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/brand_widgets.dart';
+import '../discover/data/discover_provider.dart';
 import '../discover/data/profile_models.dart';
 import 'data/profile_provider.dart';
 
@@ -38,12 +42,30 @@ class _OnboardingSetupScreenState
   bool _busy = false;
   String? _error;
 
+  // Photo picked during onboarding — uploaded AFTER the profile row is created
+  // (the photos write is an UPDATE, so the row must exist first).
+  Uint8List? _photoBytes;
+  String _photoExt = 'jpg';
+
   @override
   void dispose() {
     for (final c in [_name, _age, _country, _city, _languages, _bio]) {
       c.dispose();
     }
     super.dispose();
+  }
+
+  Future<void> _pickPhoto() async {
+    final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery, maxWidth: 1200, imageQuality: 85);
+    if (picked == null) return;
+    final bytes = await picked.readAsBytes();
+    final ext = picked.name.split('.').last.toLowerCase();
+    if (!mounted) return;
+    setState(() {
+      _photoBytes = bytes;
+      _photoExt = ext == 'png' ? 'png' : 'jpg';
+    });
   }
 
   Future<void> _save() async {
@@ -68,7 +90,14 @@ class _OnboardingSetupScreenState
             interests: _interests.toList(),
             prompts: _prompts,
           );
+      // The profile row now exists — upload the chosen avatar into it.
+      if (_photoBytes != null) {
+        await ref
+            .read(profileRepositoryProvider)
+            .uploadAvatar(_photoBytes!, ext: _photoExt);
+      }
       ref.invalidate(myProfileProvider);
+      ref.invalidate(discoverProfilesProvider);
       if (mounted) Navigator.of(context).pop();
     } catch (_) {
       setState(() => _error = 'Could not save your profile. Try again.');
@@ -92,6 +121,19 @@ class _OnboardingSetupScreenState
             const SizedBox(height: 4),
             Text('Verified, complete profiles get far more matches.',
                 style: TextStyle(color: Theme.of(context).colorScheme.outline)),
+            const SizedBox(height: 20),
+            Center(child: _PhotoPicker(bytes: _photoBytes, onTap: _pickPhoto)),
+            const SizedBox(height: 6),
+            Center(
+              child: Text(
+                _photoBytes == null
+                    ? 'Add a profile photo — it’s the #1 way to get matches'
+                    : 'Looking good! Tap to change',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    color: Theme.of(context).colorScheme.outline, fontSize: 13),
+              ),
+            ),
             const SizedBox(height: 20),
             _label('I am a'),
             _SegToggle(
@@ -270,6 +312,59 @@ class _OnboardingSetupScreenState
             style: GoogleFonts.poppins(
                 fontSize: 14, fontWeight: FontWeight.w600)),
       );
+}
+
+/// Tappable avatar with a camera badge — the onboarding photo step. Shows the
+/// picked image once chosen, else a gradient placeholder prompting a photo.
+class _PhotoPicker extends StatelessWidget {
+  final Uint8List? bytes;
+  final VoidCallback onTap;
+  const _PhotoPicker({required this.bytes, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: bytes == null ? 'Add profile photo' : 'Change profile photo',
+      child: GestureDetector(
+        onTap: onTap,
+        child: Stack(
+          children: [
+            Container(
+              width: 112,
+              height: 112,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: AppColors.brandGradient,
+                image: bytes != null
+                    ? DecorationImage(
+                        image: MemoryImage(bytes!), fit: BoxFit.cover)
+                    : null,
+              ),
+              child: bytes == null
+                  ? const Icon(LucideIcons.camera, color: Colors.white, size: 34)
+                  : null,
+            ),
+            Positioned(
+              right: 0,
+              bottom: 0,
+              child: Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                      color: Theme.of(context).scaffoldBackgroundColor, width: 2),
+                ),
+                child: const Icon(LucideIcons.plus,
+                    color: AppColors.primary, size: 18),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _PromptCard extends StatelessWidget {

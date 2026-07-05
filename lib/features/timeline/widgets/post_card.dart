@@ -1,12 +1,14 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/brand_widgets.dart';
+import '../../../core/widgets/skeleton.dart';
 import '../../auth/data/auth_provider.dart';
 import '../../chat/data/translation_service.dart';
 import '../../safety/data/safety_provider.dart';
@@ -38,6 +40,9 @@ class _PostCardState extends ConsumerState<PostCard> {
   late int _likeCount = widget.post.likeCount;
   bool _busy = false;
 
+  /// Bumped on each double-tap-to-like so the heart-burst overlay restarts.
+  int _burstTick = 0;
+
   String? _translation;
   bool _translating = false;
   bool _showTranslation = false;
@@ -61,6 +66,7 @@ class _PostCardState extends ConsumerState<PostCard> {
 
   Future<void> _toggleLike() async {
     if (_busy) return;
+    HapticFeedback.lightImpact();
     setState(() {
       _busy = true;
       _liked = !_liked;
@@ -80,6 +86,14 @@ class _PostCardState extends ConsumerState<PostCard> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Double-tap the photo to like (the universal social gesture) — likes if
+  /// not already liked and fires a heart-burst overlay each tap.
+  void _likeFromDoubleTap() {
+    HapticFeedback.mediumImpact();
+    setState(() => _burstTick++);
+    if (!_liked && !_busy) _toggleLike();
   }
 
   Future<void> _toggleTranslation() async {
@@ -383,17 +397,35 @@ class _PostCardState extends ConsumerState<PostCard> {
           if (p.hasImage)
             Padding(
               padding: const EdgeInsets.fromLTRB(0, 2, 0, 4),
-              child: CachedNetworkImage(
-                imageUrl: p.imageUrl!,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                placeholder: (_, _) => Container(
-                  height: 220,
-                  color: cs.surfaceContainerHighest,
+              child: GestureDetector(
+                onDoubleTap: _likeFromDoubleTap,
+                child: Stack(
                   alignment: Alignment.center,
-                  child: const CircularProgressIndicator(strokeWidth: 2),
+                  children: [
+                    CachedNetworkImage(
+                      imageUrl: p.imageUrl!,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      fadeInDuration: const Duration(milliseconds: 250),
+                      placeholder: (_, _) => const Skeleton(height: 220),
+                      errorWidget: (_, _, _) => const SizedBox.shrink(),
+                    ),
+                    if (_burstTick > 0)
+                      Icon(LucideIcons.heart,
+                              size: 100,
+                              color: Colors.white.withValues(alpha: 0.92))
+                          .animate(key: ValueKey(_burstTick))
+                          .scale(
+                            begin: const Offset(0.4, 0.4),
+                            end: const Offset(1, 1),
+                            duration: 260.ms,
+                            curve: Curves.easeOutBack,
+                          )
+                          .fadeIn(duration: 120.ms)
+                          .then(delay: 260.ms)
+                          .fadeOut(duration: 260.ms),
+                  ],
                 ),
-                errorWidget: (_, _, _) => const SizedBox.shrink(),
               ),
             ),
 

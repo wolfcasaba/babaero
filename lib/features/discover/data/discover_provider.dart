@@ -23,7 +23,11 @@ final discoverProfilesProvider = FutureProvider<List<Profile>>((ref) async {
   final blocked = await ref.watch(blockedIdsProvider.future);
   final liked = await ref.watch(likedIdsProvider.future);
   final filters = ref.watch(discoverFiltersProvider);
-  final profiles = await ref.watch(discoverRepositoryProvider).browse();
+  // Hard constraints pushed to SQL (server-side); blocked/liked are still
+  // removed client-side, and filters.matches() stays as a cheap belt-and-braces
+  // pass (and the only filter for the preview/mock repo).
+  final profiles =
+      await ref.watch(discoverRepositoryProvider).browse(filters: filters);
   return [
     for (final p in profiles)
       if (!blocked.contains(p.id) && !liked.contains(p.id) && filters.matches(p))

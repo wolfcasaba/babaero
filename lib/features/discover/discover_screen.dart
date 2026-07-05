@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/brand_widgets.dart';
+import '../../core/widgets/error_retry.dart';
 import '../matches/data/matches_provider.dart';
 import '../matches/widgets/match_dialog.dart';
 import '../profile/data/profile_provider.dart';
@@ -118,9 +120,9 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
           Expanded(
             child: profilesAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(
-                child: Text('Could not load profiles.\n$e',
-                    textAlign: TextAlign.center),
+              error: (e, _) => ErrorRetry(
+                message: 'Could not load profiles.',
+                onRetry: () => ref.invalidate(discoverProfilesProvider),
               ),
               data: (profiles) {
                 if (profiles.isEmpty) return const _EmptyDiscover();
@@ -149,6 +151,7 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
               children: [
                 _ActionButton(
                   icon: LucideIcons.rotateCcw,
+                  label: 'Rewind',
                   color: AppColors.accent,
                   bg: cs.surface,
                   size: 46,
@@ -157,6 +160,7 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
                 const SizedBox(width: 14),
                 _ActionButton(
                   icon: LucideIcons.x,
+                  label: 'Pass',
                   color: cs.onSurface,
                   bg: cs.surface,
                   size: 60,
@@ -165,6 +169,7 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
                 const SizedBox(width: 18),
                 _ActionButton(
                   icon: LucideIcons.star,
+                  label: 'Super like',
                   color: Colors.white,
                   bg: AppColors.accent,
                   size: 50,
@@ -173,6 +178,7 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
                 const SizedBox(width: 18),
                 _ActionButton(
                   icon: LucideIcons.heart,
+                  label: 'Like',
                   color: Colors.white,
                   gradient: AppColors.brandGradient,
                   size: 68,
@@ -264,6 +270,12 @@ class _EmptyDiscover extends StatelessWidget {
             Text('Widen your filters or check back soon.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: cs.outline)),
+            const SizedBox(height: 20),
+            OutlinedButton.icon(
+              onPressed: () => showDiscoverFilterSheet(context),
+              icon: const Icon(LucideIcons.slidersHorizontal, size: 18),
+              label: const Text('Adjust filters'),
+            ),
           ],
         ),
       ),
@@ -308,6 +320,7 @@ class _CaughtUp extends StatelessWidget {
 
 class _ActionButton extends StatelessWidget {
   final IconData icon;
+  final String label;
   final Color color;
   final Color? bg;
   final Gradient? gradient;
@@ -315,6 +328,7 @@ class _ActionButton extends StatelessWidget {
   final VoidCallback? onTap;
   const _ActionButton({
     required this.icon,
+    required this.label,
     required this.color,
     this.bg,
     this.gradient,
@@ -324,24 +338,43 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          color: bg,
-          gradient: gradient,
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.12),
-              blurRadius: 14,
-              offset: const Offset(0, 6),
+    // Guarantee at least a 48dp hit target even when the visual circle is
+    // smaller (rewind/super-like), per Material/Apple touch guidelines.
+    final hit = size < 48 ? 48.0 : size;
+    return Semantics(
+      button: true,
+      label: label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap == null
+            ? null
+            : () {
+                HapticFeedback.selectionClick();
+                onTap!();
+              },
+        child: SizedBox(
+          width: hit,
+          height: hit,
+          child: Center(
+            child: Container(
+              width: size,
+              height: size,
+              decoration: BoxDecoration(
+                color: bg,
+                gradient: gradient,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.12),
+                    blurRadius: 14,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Icon(icon, color: color, size: size * 0.42),
             ),
-          ],
+          ),
         ),
-        child: Icon(icon, color: color, size: size * 0.42),
       ),
     );
   }

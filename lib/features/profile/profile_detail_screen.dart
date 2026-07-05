@@ -100,13 +100,9 @@ class _ProfileDetailScreenState extends ConsumerState<ProfileDetailScreen> {
                       ),
                     ),
                   ),
-                  if (profile.hasPhoto)
+                  if (profile.photos.isNotEmpty)
                     Positioned.fill(
-                      child: CachedNetworkImage(
-                        imageUrl: profile.photoUrl!,
-                        fit: BoxFit.cover,
-                        errorWidget: (_, _, _) => const SizedBox.shrink(),
-                      ),
+                      child: _PhotoCarousel(photos: profile.photos),
                     )
                   else
                     Center(
@@ -430,6 +426,73 @@ class _CircleAction extends StatelessWidget {
         ),
         child: Icon(icon, color: iconColor ?? cs.onSurface),
       ),
+    );
+  }
+}
+
+/// Swipeable photo gallery for the profile hero — the deck shows a carousel, so
+/// the full profile does too (users browse all photos here before deciding).
+class _PhotoCarousel extends StatefulWidget {
+  final List<String> photos;
+  const _PhotoCarousel({required this.photos});
+
+  @override
+  State<_PhotoCarousel> createState() => _PhotoCarouselState();
+}
+
+class _PhotoCarouselState extends State<_PhotoCarousel> {
+  final _controller = PageController();
+  int _index = 0;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final photos = widget.photos;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        PageView.builder(
+          controller: _controller,
+          itemCount: photos.length,
+          onPageChanged: (i) => setState(() => _index = i),
+          itemBuilder: (_, i) => CachedNetworkImage(
+            imageUrl: photos[i],
+            fit: BoxFit.cover,
+            fadeInDuration: const Duration(milliseconds: 250),
+            errorWidget: (_, _, _) => const SizedBox.shrink(),
+          ),
+        ),
+        if (photos.length > 1)
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 8,
+            left: 12,
+            right: 12,
+            child: Row(
+              children: [
+                for (var i = 0; i < photos.length; i++)
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      child: Container(
+                        height: 3,
+                        decoration: BoxDecoration(
+                          color: i == _index
+                              ? Colors.white
+                              : Colors.white.withValues(alpha: 0.4),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }

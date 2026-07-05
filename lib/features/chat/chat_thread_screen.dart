@@ -12,6 +12,7 @@ import 'package:record/record.dart';
 import '../../core/supabase/supabase_config.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/brand_widgets.dart';
+import '../../core/widgets/error_retry.dart';
 import '../discover/data/profile_models.dart';
 import '../settings/data/app_settings.dart';
 import '../safety/widgets/safety_actions.dart';
@@ -384,7 +385,14 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
             child: messagesAsync.when(
               loading: () =>
                   const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('Chat unavailable.\n$e')),
+              error: (e, _) => ErrorRetry(
+                message: 'Chat unavailable.',
+                onRetry: () {
+                  if (convId != null) {
+                    ref.invalidate(messagesStreamProvider(convId));
+                  }
+                },
+              ),
               data: (messages) {
                 if (messages.isEmpty) {
                   return _EmptyThread(

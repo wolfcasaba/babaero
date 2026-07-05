@@ -234,6 +234,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
                 child: CachedNetworkImage(
                   imageUrl: _s.imageUrl,
                   fit: BoxFit.contain,
+                  fadeInDuration: const Duration(milliseconds: 200),
                   placeholder: (_, _) =>
                       const Center(child: CircularProgressIndicator()),
                   errorWidget: (_, _, _) => const SizedBox.shrink(),

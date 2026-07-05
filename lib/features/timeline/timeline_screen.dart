@@ -5,6 +5,8 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/brand_widgets.dart';
+import '../../core/widgets/error_retry.dart';
+import '../../core/widgets/skeleton.dart';
 import '../stories/data/stories_provider.dart';
 import '../stories/widgets/stories_bar.dart';
 import 'compose_post_screen.dart';
@@ -91,13 +93,20 @@ class _TimelineScreenState extends ConsumerState<TimelineScreen> {
           ref.invalidate(storiesProvider);
         },
         child: feedAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () => ListView(
+            children: const [
+              StoriesBar(),
+              SkeletonList(itemCount: 4, itemHeight: 260),
+            ],
+          ),
           error: (e, _) => ListView(
             children: [
               const StoriesBar(),
-              const SizedBox(height: 80),
-              Center(child: Text('Feed unavailable.\n$e',
-                  textAlign: TextAlign.center)),
+              const SizedBox(height: 40),
+              ErrorRetry(
+                message: 'Feed unavailable.',
+                onRetry: () => ref.invalidate(feedProvider),
+              ),
             ],
           ),
           data: (posts) {

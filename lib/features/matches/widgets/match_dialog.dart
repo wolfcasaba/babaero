@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -9,6 +11,8 @@ import '../../discover/data/profile_models.dart';
 
 /// Full-screen celebratory "It's a Match!" overlay.
 Future<void> showMatchDialog(BuildContext context, Profile other) {
+  // A match is the emotional peak of the app — punctuate it with a haptic.
+  HapticFeedback.heavyImpact();
   return showGeneralDialog(
     context: context,
     barrierDismissible: true,
@@ -55,12 +59,15 @@ class _MatchOverlay extends StatelessWidget {
                 style: GoogleFonts.poppins(
                     fontSize: 30, fontWeight: FontWeight.w800, color: Colors.white),
               ),
-            ),
+            )
+                .animate()
+                .fadeIn(duration: 300.ms)
+                .shimmer(delay: 300.ms, duration: 1200.ms),
             const SizedBox(height: 6),
             Text(
               'You and ${other.name} liked each other',
               style: TextStyle(color: Colors.white.withValues(alpha: 0.9)),
-            ),
+            ).animate().fadeIn(delay: 150.ms, duration: 300.ms),
             const SizedBox(height: 24),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -70,7 +77,10 @@ class _MatchOverlay extends StatelessWidget {
                   colorA: AppColors.primary,
                   colorB: AppColors.secondary,
                   size: 84,
-                ),
+                )
+                    .animate()
+                    .fadeIn(duration: 400.ms)
+                    .slideX(begin: 0.5, curve: Curves.easeOutBack),
                 Transform.translate(
                   offset: const Offset(-12, 0),
                   child: Container(
@@ -82,14 +92,25 @@ class _MatchOverlay extends StatelessWidget {
                     child: const Icon(LucideIcons.heart,
                         color: AppColors.primary, size: 22),
                   ),
-                ),
+                )
+                    .animate()
+                    .scale(
+                      delay: 320.ms,
+                      duration: 500.ms,
+                      begin: const Offset(0, 0),
+                      end: const Offset(1, 1),
+                      curve: Curves.elasticOut,
+                    ),
                 ProfileAvatar(
                   photoUrl: other.photoUrl,
                   initial: other.initial,
                   colorA: other.colorA,
                   colorB: other.colorB,
                   size: 84,
-                ),
+                )
+                    .animate()
+                    .fadeIn(duration: 400.ms)
+                    .slideX(begin: -0.5, curve: Curves.easeOutBack),
               ],
             ),
             const SizedBox(height: 28),
