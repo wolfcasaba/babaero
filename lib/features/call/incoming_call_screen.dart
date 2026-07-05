@@ -60,7 +60,8 @@ class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen> {
 
   void _close() {
     if (!mounted) return;
-    Navigator.of(context).maybePop();
+    // pop() (not maybePop) — PopScope canPop:false makes maybePop a no-op.
+    if (Navigator.of(context).canPop()) Navigator.of(context).pop();
   }
 
   void _accept() {
@@ -104,6 +105,9 @@ class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen> {
     final isVideo = widget.invite.media.isVideo;
     return PopScope(
       canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _decline();
+      },
       child: Scaffold(
         body: Container(
           decoration: const BoxDecoration(gradient: AppColors.nightGradient),

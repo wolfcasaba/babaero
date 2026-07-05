@@ -339,7 +339,11 @@ class _CallScreenState extends ConsumerState<CallScreen> {
     } else if (widget.isCaller) {
       ref.read(callRepositoryProvider).logStatus(widget.callId, status, ended: true);
     }
-    if (mounted) Navigator.of(context).maybePop();
+    // pop() (not maybePop) — the PopScope has canPop:false, which makes
+    // maybePop a no-op, leaving the call un-closable. pop() bypasses it.
+    if (mounted && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
   }
 
   @override
