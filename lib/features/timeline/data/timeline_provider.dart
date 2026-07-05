@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/supabase/supabase_config.dart';
 import '../../auth/data/auth_provider.dart';
+import '../../safety/data/safety_provider.dart';
 import 'timeline_models.dart';
 import 'timeline_repository.dart';
 
@@ -30,10 +31,16 @@ class FeedNotifier extends AsyncNotifier<List<Post>> {
   Future<List<Post>> build() async {
     ref.watch(currentUserIdProvider);
     _reachedEnd = false;
+    final blocked = await ref.watch(blockedIdsProvider.future);
     final page =
         await ref.watch(timelineRepositoryProvider).feed(limit: kFeedPageSize);
+    // reachedEnd tracks the RAW fetch size (before hiding blocked authors) so
+    // paging stays correct even when a full page is all blocked.
     if (page.length < kFeedPageSize) _reachedEnd = true;
-    return page;
+    return [
+      for (final p in page)
+        if (!blocked.contains(p.authorId)) p,
+    ];
   }
 
   /// Append the next page. No-ops at the end or while a page is in flight.
@@ -43,17 +50,18 @@ class FeedNotifier extends AsyncNotifier<List<Post>> {
     if (current == null || current.isEmpty) return;
     _loadingMore = true;
     try {
+      final blocked = ref.read(blockedIdsProvider).asData?.value ?? const {};
       final more = await ref.read(timelineRepositoryProvider).feed(
             limit: kFeedPageSize,
             before: current.last.createdAt,
           );
       if (more.length < kFeedPageSize) _reachedEnd = true;
-      // Dedup by id in case posts share the boundary timestamp.
+      // Dedup by id (shared boundary timestamps) + hide blocked authors.
       final seen = {for (final p in current) p.id};
       state = AsyncData([
         ...current,
         for (final p in more)
-          if (!seen.contains(p.id)) p,
+          if (!seen.contains(p.id) && !blocked.contains(p.authorId)) p,
       ]);
     } catch (_) {
       // keep the current page; the next scroll can retry

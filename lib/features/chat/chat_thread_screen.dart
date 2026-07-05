@@ -9,6 +9,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/widgets/brand_widgets.dart';
 import '../discover/data/profile_models.dart';
 import '../settings/data/app_settings.dart';
+import '../safety/widgets/safety_actions.dart';
 import 'data/chat_models.dart';
 import 'data/chat_provider.dart';
 import 'data/translation_service.dart';
@@ -190,6 +191,14 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
     );
   }
 
+  /// Block/report the other member from inside the thread (safety reachable
+  /// from where abuse happens). On block, leave the conversation.
+  Future<void> _openSafety() async {
+    final blocked = await showSafetyActions(context, ref,
+        targetId: widget.profile.id, targetName: widget.profile.name);
+    if (blocked && mounted) Navigator.of(context).pop();
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -256,6 +265,25 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
             icon: const Icon(LucideIcons.phone),
             tooltip: 'Voice call',
             onPressed: () => _comingSoon(context),
+          ),
+          PopupMenuButton<String>(
+            icon: const Icon(LucideIcons.ellipsisVertical),
+            onSelected: (v) {
+              if (v == 'safety') _openSafety();
+            },
+            itemBuilder: (_) => [
+              PopupMenuItem(
+                value: 'safety',
+                child: Row(
+                  children: [
+                    const Icon(LucideIcons.shield,
+                        size: 18, color: AppColors.danger),
+                    const SizedBox(width: 10),
+                    Text('Block or report ${p.name}'),
+                  ],
+                ),
+              ),
+            ],
           ),
           const SizedBox(width: 4),
         ],

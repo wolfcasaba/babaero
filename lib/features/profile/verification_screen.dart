@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/theme/app_colors.dart';
@@ -102,7 +103,33 @@ class VerificationScreen extends ConsumerWidget {
 
   Future<void> _submit(
       BuildContext context, WidgetRef ref, String type) async {
-    await ref.read(_verificationRepoProvider).submit(type);
+    final repo = ref.read(_verificationRepoProvider);
+    // Photo verification captures a real front-camera selfie so reviewers have
+    // something to compare — otherwise the record is empty and unreviewable.
+    String? evidence;
+    if (type == 'photo') {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.camera,
+        preferredCameraDevice: CameraDevice.front,
+        maxWidth: 1200,
+        imageQuality: 85,
+      );
+      if (picked == null) return; // cancelled
+      try {
+        final bytes = await picked.readAsBytes();
+        final ext = picked.name.split('.').last.toLowerCase();
+        evidence =
+            await repo.uploadEvidence(bytes, ext: ext == 'png' ? 'png' : 'jpg');
+      } catch (_) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not upload selfie. Try again.')),
+          );
+        }
+        return;
+      }
+    }
+    await repo.submit(type, evidence: evidence);
     ref.invalidate(verificationStatusProvider);
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

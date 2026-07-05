@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/supabase/supabase_config.dart';
 import '../../auth/data/auth_provider.dart';
 import '../../discover/data/profile_models.dart';
+import '../../safety/data/safety_provider.dart';
 import 'matches_repository.dart';
 
 final matchesRepositoryProvider = Provider<MatchesRepository>((ref) {
@@ -12,9 +13,15 @@ final matchesRepositoryProvider = Provider<MatchesRepository>((ref) {
   return PreviewMatchesRepository();
 });
 
-final matchesProvider = FutureProvider<List<Profile>>((ref) {
+final matchesProvider = FutureProvider<List<Profile>>((ref) async {
   ref.watch(currentUserIdProvider);
-  return ref.watch(matchesRepositoryProvider).matches();
+  final blocked = await ref.watch(blockedIdsProvider.future);
+  final all = await ref.watch(matchesRepositoryProvider).matches();
+  // A blocked member disappears from your matches list too, not just Discover.
+  return [
+    for (final p in all)
+      if (!blocked.contains(p.id)) p,
+  ];
 });
 
 final likesYouCountProvider = FutureProvider<int>((ref) {

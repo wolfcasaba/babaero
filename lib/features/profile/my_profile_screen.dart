@@ -21,6 +21,64 @@ import 'onboarding_setup_screen.dart';
 import 'photo_gallery_screen.dart';
 import 'verification_screen.dart';
 
+/// Type-DELETE confirmation → permanently delete the account via the edge
+/// function. On success the auth session is cleared and the gate returns to the
+/// welcome screen.
+Future<void> _confirmAndDeleteAccount(
+    BuildContext context, WidgetRef ref) async {
+  final controller = TextEditingController();
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setLocal) => AlertDialog(
+        title: const Text('Delete account'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+                'This permanently deletes your profile, matches, messages and '
+                'photos. This cannot be undone.\n\nType DELETE to confirm.'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autocorrect: false,
+              textCapitalization: TextCapitalization.characters,
+              decoration: const InputDecoration(hintText: 'DELETE'),
+              onChanged: (_) => setLocal(() {}),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          TextButton(
+            onPressed: controller.text.trim().toUpperCase() == 'DELETE'
+                ? () => Navigator.pop(ctx, true)
+                : null,
+            child: const Text('Delete',
+                style: TextStyle(color: AppColors.danger)),
+          ),
+        ],
+      ),
+    ),
+  );
+  controller.dispose();
+  if (confirmed != true) return;
+  try {
+    await ref.read(authRepositoryProvider).deleteAccount();
+    // signOut inside deleteAccount flips the auth gate back to welcome.
+  } catch (_) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Could not delete the account. Try again.')),
+      );
+    }
+  }
+}
+
 Future<void> _pickAndUploadAvatar(BuildContext context, WidgetRef ref) async {
   final picked = await ImagePicker()
       .pickImage(source: ImageSource.gallery, maxWidth: 1200, imageQuality: 85);
@@ -167,11 +225,14 @@ class MyProfileScreen extends ConsumerWidget {
               (LucideIcons.bell, 'Notifications'),
               (LucideIcons.circleHelp, 'Help & support'),
               (LucideIcons.logOut, 'Log out'),
+              (LucideIcons.trash2, 'Delete account'),
             ],
             onTap: (label) async {
               switch (label) {
                 case 'Log out':
                   await ref.read(authRepositoryProvider).signOut();
+                case 'Delete account':
+                  await _confirmAndDeleteAccount(context, ref);
                 case 'Safety & privacy':
                   Navigator.of(context).push(MaterialPageRoute(
                       builder: (_) => const BlockedUsersScreen()));

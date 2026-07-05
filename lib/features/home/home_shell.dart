@@ -6,6 +6,7 @@ import '../chat/chat_list_screen.dart';
 import '../chat/data/chat_provider.dart';
 import '../discover/discover_screen.dart';
 import '../matches/matches_screen.dart';
+import '../profile/data/profile_provider.dart';
 import '../profile/my_profile_screen.dart';
 import '../timeline/timeline_screen.dart';
 
@@ -17,7 +18,8 @@ class HomeShell extends ConsumerStatefulWidget {
   ConsumerState<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends ConsumerState<HomeShell> {
+class _HomeShellState extends ConsumerState<HomeShell>
+    with WidgetsBindingObserver {
   int _index = 0;
 
   static const _tabs = [
@@ -27,6 +29,32 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     ChatListScreen(),
     MyProfileScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Mark online as soon as the app is in the foreground on the home shell.
+    _setOnline(true);
+  }
+
+  @override
+  void dispose() {
+    _setOnline(false);
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Drive real presence off the app lifecycle so is_online / last_active
+    // reflect actual activity (Discover ordering + the online dot depend on it).
+    _setOnline(state == AppLifecycleState.resumed);
+  }
+
+  void _setOnline(bool online) {
+    ref.read(profileRepositoryProvider).setOnline(online);
+  }
 
   @override
   Widget build(BuildContext context) {

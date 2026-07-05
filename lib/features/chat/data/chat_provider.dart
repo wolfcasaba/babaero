@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/supabase/supabase_config.dart';
 import '../../auth/data/auth_provider.dart';
+import '../../safety/data/safety_provider.dart';
 import 'chat_models.dart';
 import 'chat_repository.dart';
 
@@ -53,10 +54,16 @@ final messagePulseProvider = StreamProvider<int>((ref) {
 
 /// The current user's conversation list (newest first). Refetches live on each
 /// message pulse so unread counts + previews stay current across the app.
-final conversationsProvider = FutureProvider<List<ConversationView>>((ref) {
+/// Conversations with a blocked member are hidden.
+final conversationsProvider = FutureProvider<List<ConversationView>>((ref) async {
   ref.watch(currentUserIdProvider);
   ref.watch(messagePulseProvider);
-  return ref.watch(chatRepositoryProvider).conversations();
+  final blocked = await ref.watch(blockedIdsProvider.future);
+  final convos = await ref.watch(chatRepositoryProvider).conversations();
+  return [
+    for (final c in convos)
+      if (!blocked.contains(c.other.id)) c,
+  ];
 });
 
 /// Live messages for a conversation.

@@ -8,11 +8,10 @@ import '../../core/theme/app_colors.dart';
 import '../../core/widgets/brand_widgets.dart';
 import '../chat/chat_thread_screen.dart';
 import '../discover/data/compatibility.dart';
-import '../discover/data/discover_provider.dart';
 import '../discover/data/profile_models.dart';
 import '../matches/data/matches_provider.dart';
 import '../matches/widgets/match_dialog.dart';
-import '../safety/data/safety_provider.dart';
+import '../safety/widgets/safety_actions.dart';
 import 'data/profile_provider.dart';
 
 /// Full profile view — opened from Discover or Matches.
@@ -58,122 +57,9 @@ class _ProfileDetailScreenState extends ConsumerState<ProfileDetailScreen> {
   }
 
   Future<void> _openSafetySheet() async {
-    final action = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(LucideIcons.flag, color: AppColors.secondary),
-              title: Text('Report ${profile.name}'),
-              subtitle: const Text('Tell us what\'s wrong'),
-              onTap: () => Navigator.pop(ctx, 'report'),
-            ),
-            ListTile(
-              leading: const Icon(LucideIcons.ban, color: AppColors.danger),
-              title: Text('Block ${profile.name}'),
-              subtitle: const Text('They won\'t appear in Discover'),
-              onTap: () => Navigator.pop(ctx, 'block'),
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-    if (action == 'report') await _report();
-    if (action == 'block') await _block();
-  }
-
-  Future<void> _report() async {
-    const reasons = [
-      'Fake profile',
-      'Inappropriate photos',
-      'Harassment or abuse',
-      'Scam or spam',
-      'Underage',
-      'Something else',
-    ];
-    final reason = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-              child: Text('Why are you reporting?',
-                  style: GoogleFonts.poppins(
-                      fontSize: 17, fontWeight: FontWeight.w600)),
-            ),
-            for (final r in reasons)
-              ListTile(
-                title: Text(r),
-                onTap: () => Navigator.pop(ctx, r),
-              ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-    if (reason == null) return;
-    try {
-      await ref.read(safetyRepositoryProvider).report(profile.id, reason: reason);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Thanks — we\'ll review this report.')),
-        );
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not send report. Try again.')),
-        );
-      }
-    }
-  }
-
-  Future<void> _block() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Block ${profile.name}?'),
-        content: const Text(
-            'They won\'t appear in your Discover deck. You can unblock later '
-            'from Safety & privacy.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child:
-                const Text('Block', style: TextStyle(color: AppColors.danger)),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    try {
-      await ref.read(safetyRepositoryProvider).block(profile.id);
-      ref.invalidate(blockedIdsProvider);
-      ref.invalidate(discoverProfilesProvider);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${profile.name} blocked.')),
-        );
-        Navigator.of(context).pop();
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not block. Try again.')),
-        );
-      }
-    }
+    final blocked = await showSafetyActions(context, ref,
+        targetId: profile.id, targetName: profile.name);
+    if (blocked && mounted) Navigator.of(context).pop();
   }
 
   @override
