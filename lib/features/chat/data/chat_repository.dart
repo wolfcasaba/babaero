@@ -178,14 +178,20 @@ class ChatRepository {
     return storage.getPublicUrl(path);
   }
 
-  /// Realtime stream of the conversation's messages (ordered).
+  /// Realtime stream of the conversation's messages, oldest→newest.
+  ///
+  /// NOTE: the Supabase *stream* builder's `order()` defaults to DESCENDING
+  /// (unlike the query builder), so we ask for ascending explicitly AND sort in
+  /// Dart as a guard — incremental realtime inserts must never land out of order
+  /// (that showed the newest message at the top instead of above the composer).
   Stream<List<Message>> messageStream(String conversationId) {
     return SupabaseConfig.db
         .from('messages')
         .stream(primaryKey: ['id'])
         .eq('conversation_id', conversationId)
-        .order('created_at')
-        .map((rows) => rows.map(Message.fromMap).toList());
+        .order('created_at', ascending: true)
+        .map((rows) => rows.map(Message.fromMap).toList()
+          ..sort((a, b) => a.createdAt.compareTo(b.createdAt)));
   }
 
   Profile _unknownProfile() => const Profile(

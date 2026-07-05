@@ -130,12 +130,16 @@ class GroupRepository {
 
   /// Realtime stream of a group's messages (ordered).
   Stream<List<GroupMessage>> messageStream(String groupId) {
+    // The Supabase stream builder's order() defaults to DESCENDING, so request
+    // ascending explicitly AND sort in Dart — realtime inserts must stay
+    // oldest→newest (else the newest bubble renders at the top, not the bottom).
     return SupabaseConfig.db
         .from('group_messages')
         .stream(primaryKey: ['id'])
         .eq('group_id', groupId)
-        .order('created_at')
-        .map((rows) => rows.map(GroupMessage.fromMap).toList());
+        .order('created_at', ascending: true)
+        .map((rows) => rows.map(GroupMessage.fromMap).toList()
+          ..sort((a, b) => a.createdAt.compareTo(b.createdAt)));
   }
 
   Future<void> send({
