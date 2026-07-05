@@ -6,6 +6,9 @@ abstract class MatchesRepository {
   /// Record a like; returns true when it became a mutual match.
   Future<bool> like(String targetId, {bool superLike = false});
 
+  /// Undo a like (rewind). Removes the like row so the profile can resurface.
+  Future<void> unlike(String targetId);
+
   /// Profiles the current user has matched with.
   Future<List<Profile>> matches();
 
@@ -30,6 +33,17 @@ class SupabaseMatchesRepository implements MatchesRepository {
       params: {'target': targetId, 'is_super': superLike},
     );
     return res == true;
+  }
+
+  @override
+  Future<void> unlike(String targetId) async {
+    final me = _uid;
+    if (me == null) return;
+    await SupabaseConfig.db
+        .from('likes')
+        .delete()
+        .eq('liker_id', me)
+        .eq('liked_id', targetId);
   }
 
   @override
@@ -110,6 +124,9 @@ class SupabaseMatchesRepository implements MatchesRepository {
 class PreviewMatchesRepository implements MatchesRepository {
   @override
   Future<bool> like(String targetId, {bool superLike = false}) async => false;
+
+  @override
+  Future<void> unlike(String targetId) async {}
 
   @override
   Future<List<Profile>> matches() async => sampleProfiles.take(4).toList();

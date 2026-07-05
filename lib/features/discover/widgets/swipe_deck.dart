@@ -24,9 +24,11 @@ class SwipeDeckController {
   }
 
   bool get canSwipe => _state?._canSwipe ?? false;
+  bool get canRewind => _state?._canRewind ?? false;
   void like() => _state?._fling(SwipeAction.like);
   void nope() => _state?._fling(SwipeAction.nope);
   void superLike() => _state?._fling(SwipeAction.superLike);
+  void rewind() => _state?._rewind();
 }
 
 /// A draggable card deck. Owns its own position in [profiles], fires [onAction]
@@ -39,6 +41,10 @@ class SwipeDeck extends StatefulWidget {
   final SwipeDeckController? controller;
   final void Function(Profile profile, SwipeAction action) onAction;
   final void Function(Profile profile) onTapProfile;
+
+  /// Fired when the user rewinds the last swipe — carries the restored profile
+  /// and the action being undone (so a like/super-like can be un-recorded).
+  final void Function(Profile profile, SwipeAction undone)? onRewind;
   final Widget caughtUp;
 
   const SwipeDeck({
@@ -49,6 +55,7 @@ class SwipeDeck extends StatefulWidget {
     required this.caughtUp,
     this.me,
     this.controller,
+    this.onRewind,
   });
 
   @override
@@ -63,6 +70,8 @@ class _SwipeDeckState extends State<SwipeDeck>
   Offset _to = Offset.zero;
   SwipeAction? _committing; // non-null while flinging off; null = spring-back
   int _index = 0;
+  int _photoIndex = 0; // which photo of the top card is showing
+  SwipeAction? _lastAction; // last committed action, for single-step rewind
   Size _size = Size.zero;
 
   @override
@@ -147,13 +156,48 @@ class _SwipeDeckState extends State<SwipeDeck>
     if (action != null && _index < widget.profiles.length) {
       final dismissed = widget.profiles[_index];
       _index += 1;
+      _lastAction = action; // enable a single rewind of this swipe
       widget.onAction(dismissed, action);
     }
     setState(() {
       _committing = null;
       _drag = Offset.zero;
+      _photoIndex = 0; // fresh card starts on its first photo
       _anim.reset();
     });
+  }
+
+  bool get _canRewind =>
+      !_anim.isAnimating && _index > 0 && _lastAction != null;
+
+  /// Bring the last swiped card back (single step). Clears [_lastAction] so it
+  /// can't be rewound twice, and hands the undone action back to the parent.
+  void _rewind() {
+    if (!_canRewind) return;
+    final action = _lastAction!;
+    _lastAction = null;
+    setState(() {
+      _index -= 1;
+      _drag = Offset.zero;
+      _photoIndex = 0;
+    });
+    widget.onRewind?.call(widget.profiles[_index], action);
+  }
+
+  /// Tap zones on the top card: left third = previous photo, right third = next
+  /// photo, middle = open the full profile.
+  void _onCardTap(TapUpDetails d, Profile current) {
+    final photos = current.photos;
+    final w = _size.width == 0 ? 400.0 : _size.width;
+    if (photos.length > 1 && d.localPosition.dx < w * 0.33) {
+      setState(() => _photoIndex =
+          (_photoIndex - 1).clamp(0, photos.length - 1).toInt());
+    } else if (photos.length > 1 && d.localPosition.dx > w * 0.66) {
+      setState(() => _photoIndex =
+          (_photoIndex + 1).clamp(0, photos.length - 1).toInt());
+    } else {
+      widget.onTapProfile(current);
+    }
   }
 
   @override
@@ -186,12 +230,13 @@ class _SwipeDeckState extends State<SwipeDeck>
                 angle: rot,
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: () => widget.onTapProfile(current),
+                  onTapUp: (d) => _onCardTap(d, current),
                   onPanUpdate: _onPanUpdate,
                   onPanEnd: _onPanEnd,
                   child: _CardWithStamps(
                     profile: current,
                     me: widget.me,
+                    photoIndex: _photoIndex,
                     likeOpacity: _stampOpacity(SwipeAction.like),
                     nopeOpacity: _stampOpacity(SwipeAction.nope),
                     superOpacity: _stampOpacity(SwipeAction.superLike),
@@ -220,12 +265,14 @@ class _SwipeDeckState extends State<SwipeDeck>
 class _CardWithStamps extends StatelessWidget {
   final Profile profile;
   final Profile? me;
+  final int photoIndex;
   final double likeOpacity;
   final double nopeOpacity;
   final double superOpacity;
   const _CardWithStamps({
     required this.profile,
     this.me,
+    this.photoIndex = 0,
     this.likeOpacity = 0,
     this.nopeOpacity = 0,
     this.superOpacity = 0,
@@ -234,6 +281,9 @@ class _CardWithStamps extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final compat = compatibility(me, profile);
+    final photos = profile.photos;
+    final shownPhoto =
+        photos.isEmpty ? null : photos[photoIndex.clamp(0, photos.length - 1)];
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
       child: ClipRRect(
@@ -251,9 +301,9 @@ class _CardWithStamps extends StatelessWidget {
                 ),
               ),
             ),
-            if (profile.hasPhoto)
+            if (shownPhoto != null)
               CachedNetworkImage(
-                imageUrl: profile.photoUrl!,
+                imageUrl: shownPhoto,
                 fit: BoxFit.cover,
                 errorWidget: (_, _, _) => const SizedBox.shrink(),
               )
@@ -278,9 +328,39 @@ class _CardWithStamps extends StatelessWidget {
                 ),
               ),
             ),
-            // Top-right status pill.
+            // Photo carousel segment indicators (only with multiple photos).
+            if (photos.length > 1)
+              Positioned(
+                top: 10,
+                left: 12,
+                right: 12,
+                child: Row(
+                  children: [
+                    for (var i = 0; i < photos.length; i++)
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 2),
+                          child: Container(
+                            height: 3,
+                            decoration: BoxDecoration(
+                              color: i == photoIndex.clamp(0, photos.length - 1)
+                                  ? Colors.white
+                                  : Colors.white38,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            // Top-right status pill (nudged below the photo segments).
             if (profile.online)
-              const Positioned(top: 16, right: 16, child: _OnlinePill()),
+              Positioned(
+                top: photos.length > 1 ? 24 : 16,
+                right: 16,
+                child: const _OnlinePill(),
+              ),
             // Top-left compatibility badge.
             if (compat != null && compat.hasSignal)
               Positioned(

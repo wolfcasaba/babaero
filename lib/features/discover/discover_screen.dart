@@ -58,6 +58,20 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
     }
   }
 
+  Future<void> _onRewind(Profile p, SwipeAction undone) async {
+    // A pass has no backend effect; a like/super-like recorded a row, so undo it.
+    if (undone == SwipeAction.like || undone == SwipeAction.superLike) {
+      try {
+        await ref.read(matchesRepositoryProvider).unlike(p.id);
+        ref.invalidate(matchesProvider);
+        ref.invalidate(likesYouCountProvider);
+        ref.invalidate(likedIdsProvider);
+      } catch (_) {
+        // best-effort — the card is already back on screen
+      }
+    }
+  }
+
   void _reload() {
     // A deliberate re-deal: refresh the exclusion sets so freshly liked/blocked
     // members drop out, then rebuild the deck from the top.
@@ -117,6 +131,7 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
                   me: me,
                   controller: _deck,
                   onAction: _onAction,
+                  onRewind: _onRewind,
                   onTapProfile: (p) => Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => ProfileDetailScreen(profile: p),
@@ -132,6 +147,14 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                _ActionButton(
+                  icon: LucideIcons.rotateCcw,
+                  color: AppColors.accent,
+                  bg: cs.surface,
+                  size: 46,
+                  onTap: () => _deck.rewind(),
+                ),
+                const SizedBox(width: 14),
                 _ActionButton(
                   icon: LucideIcons.x,
                   color: cs.onSurface,
