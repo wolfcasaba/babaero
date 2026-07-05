@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/supabase/supabase_config.dart';
 import '../../auth/data/auth_provider.dart';
@@ -14,6 +17,30 @@ final timelineRepositoryProvider = Provider<TimelineRepository>((ref) {
     return SupabaseTimelineRepository();
   }
   return PreviewTimelineRepository();
+});
+
+/// Realtime pulse for new posts — drives the "New posts" pill without auto
+/// refetching (which would reset pagination). Emits a tick per inserted post.
+final feedPulseProvider = StreamProvider<int>((ref) {
+  if (!SupabaseConfig.isConfigured || !SupabaseConfig.isSignedIn) {
+    return const Stream<int>.empty();
+  }
+  final controller = StreamController<int>();
+  var tick = 0;
+  final channel = SupabaseConfig.client
+      .channel('feed-pulse')
+      .onPostgresChanges(
+        event: PostgresChangeEvent.insert,
+        schema: 'babaero',
+        table: 'posts',
+        callback: (_) => controller.add(++tick),
+      )
+      .subscribe();
+  ref.onDispose(() {
+    SupabaseConfig.client.removeChannel(channel);
+    controller.close();
+  });
+  return controller.stream;
 });
 
 const int kFeedPageSize = 20;

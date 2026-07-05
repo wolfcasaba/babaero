@@ -1,8 +1,13 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
 
 import '../../core/supabase/supabase_config.dart';
 import '../../core/theme/app_colors.dart';
@@ -38,6 +43,13 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
 
   // Realtime typing indicator (created once the conversation id resolves).
   TypingChannel? _typing;
+
+  // Voice-note recording.
+  final _recorder = AudioRecorder();
+  bool _recording = false;
+  String? _recordPath;
+  Timer? _recordTimer;
+  int _recordSeconds = 0;
 
   @override
   void initState() {
@@ -113,9 +125,86 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
   void dispose() {
     _input.removeListener(_onTyping);
     _typing?.dispose();
+    _recordTimer?.cancel();
+    _recorder.dispose();
     _input.dispose();
     _scroll.dispose();
     super.dispose();
+  }
+
+  String get _recordLabel {
+    final m = _recordSeconds ~/ 60;
+    final s = (_recordSeconds % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  Future<void> _startRecording() async {
+    if (_recording || _conversationId == null) return;
+    if (!await _recorder.hasPermission()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Microphone permission is needed.')),
+        );
+      }
+      return;
+    }
+    final dir = await getTemporaryDirectory();
+    final path =
+        '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+    await _recorder.start(const RecordConfig(), path: path);
+    _recordPath = path;
+    _recordSeconds = 0;
+    _recordTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _recordSeconds++);
+    });
+    if (mounted) setState(() => _recording = true);
+  }
+
+  Future<void> _cancelRecording() async {
+    _recordTimer?.cancel();
+    try {
+      await _recorder.stop();
+      final p = _recordPath;
+      if (p != null) await File(p).delete().catchError((_) => File(p));
+    } catch (_) {}
+    _recordPath = null;
+    if (mounted) setState(() => _recording = false);
+  }
+
+  Future<void> _stopAndSendVoice() async {
+    final convId = _conversationId;
+    _recordTimer?.cancel();
+    final seconds = _recordSeconds;
+    String? path;
+    try {
+      path = await _recorder.stop();
+    } catch (_) {}
+    if (mounted) setState(() => _recording = false);
+    // Too short to be intentional → discard.
+    if (path == null || convId == null || seconds < 1) {
+      if (path != null) await File(path).delete().catchError((_) => File(path!));
+      return;
+    }
+    try {
+      final bytes = await File(path).readAsBytes();
+      final repo = ref.read(chatRepositoryProvider);
+      final url = await repo.uploadVoice(bytes);
+      if (url != null) {
+        await repo.send(
+          conversationId: convId,
+          body: '',
+          voiceUrl: url,
+          voiceDurMs: seconds * 1000,
+        );
+      }
+      await File(path).delete().catchError((_) => File(path!));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not send voice note.')),
+        );
+      }
+    }
   }
 
   Future<void> _send() async {
@@ -324,6 +413,8 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                       body: m.body,
                       translatedBody: m.translatedBody,
                       imageUrl: m.imageUrl,
+                      voiceUrl: m.voiceUrl,
+                      voiceDurMs: m.voiceDurMs,
                       createdAt: m.createdAt,
                       // Receipt only on my own bubbles: ✓ sent, ✓✓ read.
                       readReceipt: mine ? m.isRead : null,
@@ -339,6 +430,12 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
             onSend: _send,
             hintText: 'Type a message…',
             onAttach: (convId != null && !_sending) ? _pickAndSendImage : null,
+            onMicStart:
+                (convId != null && !_sending) ? _startRecording : null,
+            onMicStop: _stopAndSendVoice,
+            onMicCancel: _cancelRecording,
+            recording: _recording,
+            recordingLabel: _recordLabel,
           ),
         ],
       ),

@@ -123,6 +123,8 @@ class ChatRepository {
     String? sourceLang,
     String? targetLang,
     String? imageUrl,
+    String? voiceUrl,
+    int? voiceDurMs,
   }) async {
     final me = myId;
     if (me == null) return;
@@ -134,7 +136,24 @@ class ChatRepository {
       'source_lang': ?sourceLang,
       'target_lang': ?targetLang,
       'image_url': ?imageUrl,
+      'voice_url': ?voiceUrl,
+      'voice_dur_ms': ?voiceDurMs,
     });
+  }
+
+  /// Upload a recorded voice note to the sender's folder in the public `chat`
+  /// bucket; returns its public URL.
+  Future<String?> uploadVoice(Uint8List bytes, {String ext = 'm4a'}) async {
+    final me = myId;
+    if (me == null) return null;
+    final path = 'voice/$me/${DateTime.now().millisecondsSinceEpoch}.$ext';
+    final storage = SupabaseConfig.client.storage.from('chat');
+    await storage.uploadBinary(
+      path,
+      bytes,
+      fileOptions: const FileOptions(upsert: true, contentType: 'audio/mp4'),
+    );
+    return storage.getPublicUrl(path);
   }
 
   /// Upload a chat image to the sender's folder in the public `chat` bucket.

@@ -19,7 +19,8 @@ android {
         applicationId = "com.babaero.babaero"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // Voice notes: the `record` plugin needs Android 23+ (audioplayers 21+).
+        minSdk = maxOf(flutter.minSdkVersion, 24)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

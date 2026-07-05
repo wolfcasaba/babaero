@@ -1,3 +1,4 @@
+import 'package:audioplayers/audioplayers.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -38,14 +39,23 @@ class TranslationBanner extends StatelessWidget {
   }
 }
 
-/// The message input row (attach photo + text field + send). Shared by both
-/// threads; [hintText] differs (1:1 vs group).
+/// The message input row (attach photo + optional voice + text field + send).
+/// Shared by both threads; [hintText] differs (1:1 vs group). Voice controls
+/// only appear when [onMicStart] is provided (1:1 only).
 class MessageComposer extends StatelessWidget {
   final TextEditingController controller;
   final bool enabled;
   final VoidCallback onSend;
   final VoidCallback? onAttach;
   final String hintText;
+
+  /// Voice note controls. When [onMicStart] is null the mic button is hidden.
+  final VoidCallback? onMicStart;
+  final VoidCallback? onMicStop;
+  final VoidCallback? onMicCancel;
+  final bool recording;
+  final String recordingLabel;
+
   const MessageComposer({
     super.key,
     required this.controller,
@@ -53,6 +63,11 @@ class MessageComposer extends StatelessWidget {
     required this.onSend,
     required this.hintText,
     this.onAttach,
+    this.onMicStart,
+    this.onMicStop,
+    this.onMicCancel,
+    this.recording = false,
+    this.recordingLabel = '',
   });
 
   @override
@@ -62,53 +77,208 @@ class MessageComposer extends StatelessWidget {
       top: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-        child: Row(
-          children: [
-            IconButton(
-              icon: const Icon(LucideIcons.imagePlus),
-              color: AppColors.primary,
-              tooltip: 'Send a photo',
-              onPressed: onAttach,
+        child: recording ? _recordingRow(cs) : _normalRow(cs),
+      ),
+    );
+  }
+
+  Widget _normalRow(ColorScheme cs) {
+    return Row(
+      children: [
+        IconButton(
+          icon: const Icon(LucideIcons.imagePlus),
+          color: AppColors.primary,
+          tooltip: 'Send a photo',
+          onPressed: onAttach,
+        ),
+        if (onMicStart != null)
+          IconButton(
+            icon: const Icon(LucideIcons.mic),
+            color: AppColors.primary,
+            tooltip: 'Record a voice note',
+            onPressed: enabled ? onMicStart : null,
+          ),
+        Expanded(
+          child: TextField(
+            controller: controller,
+            enabled: enabled,
+            minLines: 1,
+            maxLines: 4,
+            textInputAction: TextInputAction.send,
+            onSubmitted: (_) => onSend(),
+            decoration: InputDecoration(
+              hintText: hintText,
+              fillColor: cs.surfaceContainerHighest,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             ),
-            Expanded(
-              child: TextField(
-                controller: controller,
-                enabled: enabled,
-                minLines: 1,
-                maxLines: 4,
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => onSend(),
-                decoration: InputDecoration(
-                  hintText: hintText,
-                  fillColor: cs.surfaceContainerHighest,
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: enabled ? onSend : null,
-              child: Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(
-                  gradient: AppColors.brandGradient,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.primary.withValues(alpha: 0.3),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child:
-                    const Icon(LucideIcons.send, color: Colors.white, size: 20),
-              ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        _circleButton(icon: LucideIcons.send, onTap: enabled ? onSend : null),
+      ],
+    );
+  }
+
+  Widget _recordingRow(ColorScheme cs) {
+    return Row(
+      children: [
+        IconButton(
+          icon: const Icon(LucideIcons.trash2, color: AppColors.danger),
+          tooltip: 'Cancel',
+          onPressed: onMicCancel,
+        ),
+        Expanded(
+          child: Row(
+            children: [
+              const _RecordingDot(),
+              const SizedBox(width: 8),
+              Text('Recording… $recordingLabel',
+                  style: TextStyle(color: cs.onSurface)),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        _circleButton(icon: LucideIcons.send, onTap: onMicStop),
+      ],
+    );
+  }
+
+  Widget _circleButton({required IconData icon, VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 46,
+        height: 46,
+        decoration: BoxDecoration(
+          gradient: AppColors.brandGradient,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primary.withValues(alpha: 0.3),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
+        child: Icon(icon, color: Colors.white, size: 20),
+      ),
+    );
+  }
+}
+
+class _RecordingDot extends StatelessWidget {
+  const _RecordingDot();
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 12,
+        height: 12,
+        decoration: const BoxDecoration(
+          color: AppColors.danger,
+          shape: BoxShape.circle,
+        ),
+      );
+}
+
+/// A playable voice note inside a chat bubble: play/pause + progress + time.
+class _VoiceNote extends StatefulWidget {
+  final String url;
+  final int? durMs;
+  final Color tint;
+  const _VoiceNote({required this.url, required this.durMs, required this.tint});
+
+  @override
+  State<_VoiceNote> createState() => _VoiceNoteState();
+}
+
+class _VoiceNoteState extends State<_VoiceNote> {
+  final _player = AudioPlayer();
+  bool _playing = false;
+  Duration _pos = Duration.zero;
+  late Duration _total =
+      Duration(milliseconds: widget.durMs ?? 0);
+
+  @override
+  void initState() {
+    super.initState();
+    _player.onPlayerStateChanged.listen((s) {
+      if (mounted) setState(() => _playing = s == PlayerState.playing);
+    });
+    _player.onPositionChanged.listen((p) {
+      if (mounted) setState(() => _pos = p);
+    });
+    _player.onDurationChanged.listen((d) {
+      if (mounted && d > Duration.zero) setState(() => _total = d);
+    });
+    _player.onPlayerComplete.listen((_) {
+      if (mounted) {
+        setState(() {
+          _playing = false;
+          _pos = Duration.zero;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
+  }
+
+  Future<void> _toggle() async {
+    if (_playing) {
+      await _player.pause();
+    } else {
+      if (_total > Duration.zero && _pos >= _total) {
+        await _player.seek(Duration.zero);
+      }
+      await _player.play(UrlSource(widget.url));
+    }
+  }
+
+  String _fmt(Duration d) {
+    final s = d.inSeconds;
+    return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tint = widget.tint;
+    final progress = _total.inMilliseconds == 0
+        ? 0.0
+        : (_pos.inMilliseconds / _total.inMilliseconds).clamp(0.0, 1.0);
+    final remaining = _playing || _pos > Duration.zero
+        ? _pos
+        : _total;
+    return SizedBox(
+      width: 190,
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: _toggle,
+            child: Icon(
+              _playing ? LucideIcons.pause : LucideIcons.play,
+              color: tint,
+              size: 26,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 4,
+                backgroundColor: tint.withValues(alpha: 0.25),
+                valueColor: AlwaysStoppedAnimation(tint),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(_fmt(remaining),
+              style: TextStyle(color: tint.withValues(alpha: 0.85), fontSize: 12)),
+        ],
       ),
     );
   }
@@ -122,6 +292,8 @@ class MessageBubble extends StatelessWidget {
   final String body;
   final String? translatedBody;
   final String? imageUrl;
+  final String? voiceUrl;
+  final int? voiceDurMs;
   final DateTime createdAt;
 
   final bool inGroup;
@@ -141,6 +313,8 @@ class MessageBubble extends StatelessWidget {
     required this.createdAt,
     this.translatedBody,
     this.imageUrl,
+    this.voiceUrl,
+    this.voiceDurMs,
     this.inGroup = false,
     this.sender,
     this.showSender = false,
@@ -149,6 +323,7 @@ class MessageBubble extends StatelessWidget {
   });
 
   bool get _hasImage => imageUrl != null && imageUrl!.isNotEmpty;
+  bool get _hasVoice => voiceUrl != null && voiceUrl!.isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -206,6 +381,12 @@ class MessageBubble extends StatelessWidget {
             ),
             if (body.isNotEmpty) const SizedBox(height: 8),
           ],
+          if (_hasVoice)
+            _VoiceNote(
+              url: voiceUrl!,
+              durMs: voiceDurMs,
+              tint: onBubble,
+            ),
           if (body.isNotEmpty)
             Text(body, style: TextStyle(color: onBubble, fontSize: 15)),
           if (showTranslation) ...[

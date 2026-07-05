@@ -14,6 +14,10 @@ class Message {
   /// read receipt on the sender's own bubbles.
   final DateTime? readAt;
 
+  /// Voice note: public URL to the audio clip + its duration in milliseconds.
+  final String? voiceUrl;
+  final int? voiceDurMs;
+
   const Message({
     required this.id,
     required this.conversationId,
@@ -23,6 +27,8 @@ class Message {
     this.translatedBody,
     this.imageUrl,
     this.readAt,
+    this.voiceUrl,
+    this.voiceDurMs,
   });
 
   factory Message.fromMap(Map<String, dynamic> m) => Message(
@@ -36,9 +42,12 @@ class Message {
         readAt: m['read_at'] == null
             ? null
             : DateTime.parse(m['read_at'].toString()).toLocal(),
+        voiceUrl: m['voice_url'] as String?,
+        voiceDurMs: (m['voice_dur_ms'] as num?)?.toInt(),
       );
 
   bool get hasImage => imageUrl != null && imageUrl!.isNotEmpty;
+  bool get hasVoice => voiceUrl != null && voiceUrl!.isNotEmpty;
   bool get isRead => readAt != null;
   bool mine(String? myId) => senderId == myId;
 }

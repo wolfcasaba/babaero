@@ -23,6 +23,10 @@ class TimelineScreen extends ConsumerStatefulWidget {
 class _TimelineScreenState extends ConsumerState<TimelineScreen> {
   final _scroll = ScrollController();
 
+  // Pulse value acknowledged (loaded) — if the live pulse is ahead, new posts
+  // have arrived and we show the "New posts" pill.
+  int _seenPulse = 0;
+
   @override
   void initState() {
     super.initState();
@@ -44,10 +48,29 @@ class _TimelineScreenState extends ConsumerState<TimelineScreen> {
     }
   }
 
+  void _loadNewPosts() {
+    _seenPulse = ref.read(feedPulseProvider).asData?.value ?? _seenPulse;
+    ref.invalidate(feedProvider);
+    if (_scroll.hasClients) {
+      _scroll.animateTo(0,
+          duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final feedAsync = ref.watch(feedProvider);
     final reachedEnd = ref.watch(feedProvider.notifier).reachedEnd;
+    final pulse = ref.watch(feedPulseProvider).asData?.value ?? 0;
+    // A fresh feed load resets the baseline; a later pulse means new posts.
+    final hasNew = pulse > _seenPulse;
+    // When the feed (re)loads, sync the baseline so the pill hides.
+    ref.listen(feedProvider, (_, next) {
+      next.whenData((_) {
+        final p = ref.read(feedPulseProvider).asData?.value ?? 0;
+        if (_seenPulse != p) setState(() => _seenPulse = p);
+      });
+    });
 
     return Scaffold(
       appBar: AppBar(
@@ -60,7 +83,9 @@ class _TimelineScreenState extends ConsumerState<TimelineScreen> {
         onPressed: _openCompose,
         child: const Icon(LucideIcons.penLine),
       ),
-      body: RefreshIndicator(
+      body: Stack(
+        children: [
+          RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(feedProvider);
           ref.invalidate(storiesProvider);
@@ -106,6 +131,42 @@ class _TimelineScreenState extends ConsumerState<TimelineScreen> {
             );
           },
         ),
+          ),
+          // "New posts" pill — appears when a post lands while you're browsing.
+          if (hasNew)
+            Positioned(
+              top: 8,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Material(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(24),
+                  elevation: 3,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(24),
+                    onTap: _loadNewPosts,
+                    child: const Padding(
+                      padding:
+                          EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(LucideIcons.arrowUp,
+                              color: Colors.white, size: 16),
+                          SizedBox(width: 6),
+                          Text('New posts',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

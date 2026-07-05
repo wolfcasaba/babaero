@@ -1,6 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Required for release builds to reach the backend (debug adds it automatically). -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Voice notes: record audio from the microphone. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <application
         android:label="babaero"
         android:name="${applicationName}"
