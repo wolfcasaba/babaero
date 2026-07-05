@@ -10,6 +10,10 @@ class Message {
   final String? imageUrl;
   final DateTime createdAt;
 
+  /// When the recipient read this message (null = unread). Drives the ✓/✓✓
+  /// read receipt on the sender's own bubbles.
+  final DateTime? readAt;
+
   const Message({
     required this.id,
     required this.conversationId,
@@ -18,6 +22,7 @@ class Message {
     required this.createdAt,
     this.translatedBody,
     this.imageUrl,
+    this.readAt,
   });
 
   factory Message.fromMap(Map<String, dynamic> m) => Message(
@@ -28,9 +33,13 @@ class Message {
         translatedBody: m['translated_body'] as String?,
         imageUrl: m['image_url'] as String?,
         createdAt: DateTime.parse(m['created_at'].toString()).toLocal(),
+        readAt: m['read_at'] == null
+            ? null
+            : DateTime.parse(m['read_at'].toString()).toLocal(),
       );
 
   bool get hasImage => imageUrl != null && imageUrl!.isNotEmpty;
+  bool get isRead => readAt != null;
   bool mine(String? myId) => senderId == myId;
 }
 
@@ -41,10 +50,16 @@ class ConversationView {
   final Message? lastMessage;
   final DateTime lastMessageAt;
 
+  /// Count of incoming messages the current user hasn't read yet.
+  final int unreadCount;
+
   const ConversationView({
     required this.id,
     required this.other,
     required this.lastMessageAt,
     this.lastMessage,
+    this.unreadCount = 0,
   });
+
+  bool get hasUnread => unreadCount > 0;
 }

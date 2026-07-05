@@ -109,9 +109,16 @@ pubspec, commit everything, `git push origin main` → CI builds the APK.
   request permission, then call `pushRepository.registerToken(fcmToken)` after sign-in and
   `removeToken` on sign-out; a server/edge function reads device_tokens to send on match/message.
 
-## All migrations to apply when shipping (user's sbp_ token)
-`…06_timeline`, `…07_group_chat`, `…08_safety`, `…09_chat_images`, `…10_stories`, `…11_prompts`,
-`…12_gold`, `…13_device_tokens`. Then bump pubspec version, commit, push → CI APK.
+## SHIPPED 2026-07-05 — commit c5d5dbb, v1.0.5+6, Release v1.0.10
+All migrations 06→13 applied to the hosted babaero schema (verified: 17 tables, prompts/is_gold/
+image_url columns, avatars/posts/chat/stories buckets, group RPCs). Pushed to main → CI build
+succeeded → APK live at releases/latest/download/app-release.apk. Everything above is now LIVE.
+Migration path that works: PLAIN `curl` (no spoofed User-Agent) to the Management API
+`/database/query` with a user-pasted `sbp_` token — a browser UA gets classifier-blocked.
+
+### Next candidates (not yet built)
+Referral/invite system · daily streak/rewards · quality polish (verification selfie capture,
+forgot-password, empty-state CTAs, online presence on lifecycle) · native FCM push wiring.
 
 ## Group chat (round 0)
 - **NEW — Group chat, CODE DONE 2026-07-04 (not committed, migration not applied).**

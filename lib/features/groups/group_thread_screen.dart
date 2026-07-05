@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../core/supabase/supabase_config.dart';
 import '../../core/theme/app_colors.dart';
 import '../chat/data/translation_service.dart';
 import '../chat/widgets/message_widgets.dart';
@@ -63,10 +64,13 @@ class _GroupThreadScreenState extends ConsumerState<GroupThreadScreen> {
         sourceLang: src,
         targetLang: target,
       );
-      // Demo liveliness: another member replies shortly after.
-      Future.delayed(const Duration(milliseconds: 1400), () {
-        repo.demoAutoreply(widget.groupId);
-      });
+      // Demo liveliness: on the seed/demo account another member replies
+      // shortly after. Never fires for real members.
+      if (SupabaseConfig.isDemoAccount) {
+        Future.delayed(const Duration(milliseconds: 1400), () {
+          repo.demoAutoreply(widget.groupId);
+        });
+      }
     } catch (_) {
       // ignore — realtime will reconcile
     } finally {
@@ -87,24 +91,17 @@ class _GroupThreadScreenState extends ConsumerState<GroupThreadScreen> {
       final url = await repo.uploadImage(bytes, ext: ext == 'png' ? 'png' : 'jpg');
       if (url != null) {
         await repo.send(groupId: widget.groupId, body: '', imageUrl: url);
-        Future.delayed(const Duration(milliseconds: 1400), () {
-          repo.demoAutoreply(widget.groupId);
-        });
+        if (SupabaseConfig.isDemoAccount) {
+          Future.delayed(const Duration(milliseconds: 1400), () {
+            repo.demoAutoreply(widget.groupId);
+          });
+        }
       }
     } catch (_) {
       // ignore — realtime will reconcile
     } finally {
       if (mounted) setState(() => _sending = false);
     }
-  }
-
-  void _scrollToBottom() {
-    if (!_scroll.hasClients) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scroll.hasClients) {
-        _scroll.jumpTo(_scroll.position.maxScrollExtent);
-      }
-    });
   }
 
   @override
@@ -114,7 +111,6 @@ class _GroupThreadScreenState extends ConsumerState<GroupThreadScreen> {
     final members =
         ref.watch(groupMembersProvider(widget.groupId)).asData?.value ??
             const <String, Profile>{};
-    messagesAsync.whenData((_) => _scrollToBottom());
 
     final memberCount = members.isEmpty ? null : members.length;
 
@@ -179,15 +175,19 @@ class _GroupThreadScreenState extends ConsumerState<GroupThreadScreen> {
                 }
                 return ListView.builder(
                   controller: _scroll,
+                  reverse: true,
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                   itemCount: messages.length,
                   itemBuilder: (_, i) {
-                    final m = messages[i];
+                    // Newest anchors to the bottom (reverse:true), so a just-sent
+                    // message sits right above the composer.
+                    final idx = messages.length - 1 - i;
+                    final m = messages[idx];
                     final mine = m.mine(myId);
                     // Show the sender header when the previous message was from
                     // someone else (groups the run of one person's messages).
                     final showSender = !mine &&
-                        (i == 0 || messages[i - 1].senderId != m.senderId);
+                        (idx == 0 || messages[idx - 1].senderId != m.senderId);
                     return MessageBubble(
                       mine: mine,
                       body: m.body,

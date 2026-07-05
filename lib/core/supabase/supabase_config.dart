@@ -74,4 +74,12 @@ class SupabaseConfig {
 
   static bool get isSignedIn =>
       isConfigured && client.auth.currentSession != null;
+
+  /// True when the signed-in user is a seeded demo account (email ends with
+  /// `@demo.local`). Demo-only affordances — e.g. the canned auto-reply that
+  /// makes a conversation feel alive — run ONLY for these accounts, never for
+  /// real members.
+  static bool get isDemoAccount =>
+      isSignedIn &&
+      (client.auth.currentUser?.email?.endsWith('@demo.local') ?? false);
 }

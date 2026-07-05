@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -10,15 +9,15 @@ import '../matches/data/matches_provider.dart';
 import '../matches/widgets/match_dialog.dart';
 import '../profile/data/profile_provider.dart';
 import '../profile/profile_detail_screen.dart';
-import 'data/compatibility.dart';
 import 'data/discover_filters.dart';
 import 'data/discover_provider.dart';
 import 'data/profile_models.dart';
-import 'widgets/compat_badge.dart';
 import 'widgets/discover_filter_sheet.dart';
+import 'widgets/swipe_deck.dart';
 
-/// The main browse surface — one hero profile card at a time with
-/// pass / like / super-like actions and a filter row.
+/// The main browse surface — a swipeable card deck with pass / super-like / like
+/// actions. Drag right to like, left to pass, up to super-like; the action
+/// buttons drive the same fling.
 class DiscoverScreen extends ConsumerStatefulWidget {
   const DiscoverScreen({super.key});
 
@@ -27,30 +26,40 @@ class DiscoverScreen extends ConsumerStatefulWidget {
 }
 
 class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
-  int _current = 0;
+  final _deck = SwipeDeckController();
   bool _acting = false;
 
-  void _next(int total) {
-    if (total == 0) return;
-    setState(() => _current = (_current + 1) % total);
-  }
+  // Bumped on a manual "caught up" refresh so the deck re-deals from the top
+  // even when the reloaded batch is identical (mock mode / small pools).
+  int _deal = 0;
 
-  Future<void> _like(Profile p, int total, {bool superLike = false}) async {
+  Future<void> _like(Profile p, {bool superLike = false}) async {
     if (_acting) return;
     _acting = true;
     try {
-      final matched =
-          await ref.read(matchesRepositoryProvider).like(p.id, superLike: superLike);
+      final matched = await ref
+          .read(matchesRepositoryProvider)
+          .like(p.id, superLike: superLike);
       ref.invalidate(matchesProvider);
       ref.invalidate(likesYouCountProvider);
       if (matched && mounted) {
         await showMatchDialog(context, p);
       }
     } catch (_) {
-      // silent — optimistic advance below
+      // silent — the deck already advanced optimistically
     } finally {
       _acting = false;
-      if (mounted) _next(total);
+    }
+  }
+
+  void _onAction(Profile p, SwipeAction action) {
+    switch (action) {
+      case SwipeAction.like:
+        _like(p);
+      case SwipeAction.superLike:
+        _like(p, superLike: true);
+      case SwipeAction.nope:
+        break; // passing needs no backend call
     }
   }
 
@@ -58,9 +67,6 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final profilesAsync = ref.watch(discoverProfilesProvider);
-    final profiles = profilesAsync.asData?.value ?? const <Profile>[];
-    final count = profiles.length;
-    final current = count > 0 ? profiles[_current % count] : null;
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 20,
@@ -80,35 +86,40 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
       ),
       body: Column(
         children: [
-          _FilterRow(),
+          const _QuickFilterRow(),
           Expanded(
             child: profilesAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('Could not load profiles.\n$e',
-                  textAlign: TextAlign.center)),
+              error: (e, _) => Center(
+                child: Text('Could not load profiles.\n$e',
+                    textAlign: TextAlign.center),
+              ),
               data: (profiles) {
-                if (profiles.isEmpty) {
-                  return const _EmptyDiscover();
-                }
-                final p = profiles[_current % profiles.length];
+                if (profiles.isEmpty) return const _EmptyDiscover();
                 final me = ref.watch(myProfileProvider).asData?.value;
-                return Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-                  child: _ProfileCard(
-                    profile: p,
-                    compat: compatibility(me, p),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => ProfileDetailScreen(profile: p),
-                      ),
+                return SwipeDeck(
+                  key: ValueKey('${profiles.first.id}-${profiles.length}-$_deal'),
+                  profiles: profiles,
+                  me: me,
+                  controller: _deck,
+                  onAction: _onAction,
+                  onTapProfile: (p) => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => ProfileDetailScreen(profile: p),
                     ),
+                  ),
+                  caughtUp: _CaughtUp(
+                    onRefresh: () {
+                      ref.invalidate(discoverProfilesProvider);
+                      setState(() => _deal++);
+                    },
                   ),
                 );
               },
             ),
           ),
           Padding(
-            padding: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.only(top: 4, bottom: 12),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -117,7 +128,7 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
                   color: cs.onSurface,
                   bg: cs.surface,
                   size: 60,
-                  onTap: () => _next(count),
+                  onTap: () => _deck.nope(),
                 ),
                 const SizedBox(width: 18),
                 _ActionButton(
@@ -125,9 +136,7 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
                   color: Colors.white,
                   bg: AppColors.accent,
                   size: 50,
-                  onTap: current == null
-                      ? null
-                      : () => _like(current, count, superLike: true),
+                  onTap: () => _deck.superLike(),
                 ),
                 const SizedBox(width: 18),
                 _ActionButton(
@@ -135,12 +144,68 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
                   color: Colors.white,
                   gradient: AppColors.brandGradient,
                   size: 68,
-                  onTap: current == null ? null : () => _like(current, count),
+                  onTap: () => _deck.like(),
                 ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Inline quick toggles. The full filter set (gender, age, city, …) lives in the
+/// single filter sheet opened from the app-bar — this row is just fast access to
+/// the two most-used switches, not another copy of the sheet.
+class _QuickFilterRow extends ConsumerWidget {
+  const _QuickFilterRow();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final f = ref.watch(discoverFiltersProvider);
+    final notifier = ref.read(discoverFiltersProvider.notifier);
+    return SizedBox(
+      height: 46,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        children: [
+          _toggleChip(context, 'Verified', f.verifiedOnly,
+              (_) => notifier.toggleVerified()),
+          const SizedBox(width: 8),
+          _toggleChip(context, 'Online now', f.onlineOnly,
+              (_) => notifier.toggleOnline()),
+          if (!f.isDefault) ...[
+            const SizedBox(width: 8),
+            Center(
+              child: ActionChip(
+                avatar: const Icon(LucideIcons.x, size: 15),
+                label: const Text('Clear'),
+                onPressed: notifier.reset,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _toggleChip(BuildContext context, String label, bool selected,
+      ValueChanged<bool> onSelected) {
+    return Center(
+      child: FilterChip(
+        label: Text(label),
+        selected: selected,
+        showCheckmark: false,
+        selectedColor: AppColors.primary,
+        labelStyle: TextStyle(
+          color:
+              selected ? Colors.white : Theme.of(context).colorScheme.onSurface,
+          fontWeight: FontWeight.w600,
+          fontSize: 13,
+        ),
+        onSelected: onSelected,
       ),
     );
   }
@@ -174,254 +239,37 @@ class _EmptyDiscover extends StatelessWidget {
   }
 }
 
-class _FilterRow extends ConsumerWidget {
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final f = ref.watch(discoverFiltersProvider);
-    final notifier = ref.read(discoverFiltersProvider.notifier);
-    final ageActive = f.minAge != kMinFilterAge || f.maxAge != kMaxFilterAge;
-    const genderLabels = {'female': 'Women', 'male': 'Men', 'other': 'Other'};
-    return SizedBox(
-      height: 46,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        children: [
-          _toggleChip(context, 'Verified', f.verifiedOnly,
-              (_) => notifier.toggleVerified()),
-          const SizedBox(width: 8),
-          _toggleChip(context, 'Online now', f.onlineOnly,
-              (_) => notifier.toggleOnline()),
-          const SizedBox(width: 8),
-          _actionChip(
-            context,
-            f.gender == null ? 'Everyone' : genderLabels[f.gender] ?? 'Everyone',
-            f.gender != null,
-            () => showDiscoverFilterSheet(context),
-          ),
-          const SizedBox(width: 8),
-          _actionChip(
-            context,
-            ageActive ? 'Age ${f.minAge}–${f.maxAge}' : 'Any age',
-            ageActive,
-            () => showDiscoverFilterSheet(context),
-          ),
-          if (f.city != null && f.city!.isNotEmpty) ...[
-            const SizedBox(width: 8),
-            _actionChip(context, '📍 ${f.city}', true,
-                () => showDiscoverFilterSheet(context)),
-          ],
-          if (!f.isDefault) ...[
-            const SizedBox(width: 8),
-            Center(
-              child: ActionChip(
-                avatar: const Icon(LucideIcons.x, size: 15),
-                label: const Text('Clear'),
-                onPressed: notifier.reset,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _toggleChip(BuildContext context, String label, bool selected,
-      ValueChanged<bool> onSelected) {
-    return Center(
-      child: FilterChip(
-        label: Text(label),
-        selected: selected,
-        showCheckmark: false,
-        selectedColor: AppColors.primary,
-        labelStyle: TextStyle(
-          color: selected
-              ? Colors.white
-              : Theme.of(context).colorScheme.onSurface,
-          fontWeight: FontWeight.w600,
-          fontSize: 13,
-        ),
-        onSelected: onSelected,
-      ),
-    );
-  }
-
-  Widget _actionChip(
-      BuildContext context, String label, bool active, VoidCallback onTap) {
-    return Center(
-      child: ActionChip(
-        avatar: Icon(LucideIcons.slidersHorizontal,
-            size: 15,
-            color: active
-                ? AppColors.primary
-                : Theme.of(context).colorScheme.onSurface),
-        label: Text(label),
-        labelStyle: TextStyle(
-          fontWeight: FontWeight.w600,
-          fontSize: 13,
-          color: active
-              ? AppColors.primary
-              : Theme.of(context).colorScheme.onSurface,
-        ),
-        onPressed: onTap,
-      ),
-    );
-  }
-}
-
-class _ProfileCard extends StatelessWidget {
-  final Profile profile;
-  final Compat? compat;
-  final VoidCallback onTap;
-  const _ProfileCard({required this.profile, required this.onTap, this.compat});
+class _CaughtUp extends StatelessWidget {
+  final VoidCallback onRefresh;
+  const _CaughtUp({required this.onRefresh});
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
-        child: Stack(
-          fit: StackFit.expand,
+    final cs = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // Gradient base (fallback when there's no photo).
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [profile.colorA, profile.colorB],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-            ),
-            if (profile.hasPhoto)
-              CachedNetworkImage(
-                imageUrl: profile.photoUrl!,
-                fit: BoxFit.cover,
-                errorWidget: (_, _, _) => const SizedBox.shrink(),
-              )
-            else
-              Align(
-                alignment: Alignment.center,
-                child: Text(
-                  profile.initial,
-                  style: GoogleFonts.poppins(
-                    fontSize: 120,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white.withValues(alpha: 0.22),
-                  ),
-                ),
-              ),
-            // Bottom scrim for legibility.
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.center,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, AppColors.scrimStrong],
-                ),
-              ),
-            ),
-            // Top-right status pills.
-            Positioned(
-              top: 16,
-              right: 16,
-              child: Row(
-                children: [
-                  if (profile.online) _pill(LucideIcons.circle, 'Online'),
-                ],
-              ),
-            ),
-            // Top-left compatibility badge.
-            if (compat != null && compat!.hasSignal)
-              Positioned(
-                top: 16,
-                left: 16,
-                child: CompatBadge(percent: compat!.percent),
-              ),
-            // Bottom info.
-            Positioned(
-              left: 20,
-              right: 20,
-              bottom: 20,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          '${profile.name}, ${profile.age}',
-                          style: GoogleFonts.poppins(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      if (profile.verified) const VerifiedBadge(size: 22),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      const Icon(LucideIcons.mapPin,
-                          size: 15, color: Colors.white70),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${profile.city} · ${profile.distanceKm} km away',
-                        style: const TextStyle(color: Colors.white70),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: profile.interests
-                        .take(3)
-                        .map((t) => _interestChip(t))
-                        .toList(),
-                  ),
-                ],
-              ),
+            const Icon(LucideIcons.sparkles, size: 56, color: AppColors.accent),
+            const SizedBox(height: 16),
+            Text("You're all caught up",
+                style: GoogleFonts.poppins(
+                    fontSize: 18, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            Text('You have seen everyone for now. Come back soon for new faces.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: cs.outline)),
+            const SizedBox(height: 20),
+            OutlinedButton.icon(
+              onPressed: onRefresh,
+              icon: const Icon(LucideIcons.rotateCw, size: 18),
+              label: const Text('Start over'),
             ),
           ],
         ),
       ),
-    );
-  }
-
-  Widget _pill(IconData icon, String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(30),
-      ),
-      child: Row(
-        children: [
-          const Icon(LucideIcons.circle,
-              size: 9, color: AppColors.online, fill: 1),
-          const SizedBox(width: 6),
-          Text(label,
-              style: const TextStyle(color: Colors.white, fontSize: 12)),
-        ],
-      ),
-    );
-  }
-
-  Widget _interestChip(String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
-      ),
-      child: Text(text,
-          style: const TextStyle(color: Colors.white, fontSize: 13)),
     );
   }
 }

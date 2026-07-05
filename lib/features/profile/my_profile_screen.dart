@@ -10,7 +10,6 @@ import '../../core/theme/theme_mode_provider.dart';
 import '../../core/widgets/brand_widgets.dart';
 import '../auth/data/auth_provider.dart';
 import '../discover/data/discover_provider.dart';
-import '../discover/widgets/discover_filter_sheet.dart';
 import '../premium/gold_screen.dart';
 import '../safety/blocked_users_screen.dart';
 import '../settings/help_screen.dart';
@@ -137,7 +136,6 @@ class MyProfileScreen extends ConsumerWidget {
               (LucideIcons.userPen, 'Edit profile'),
               (LucideIcons.image, 'My photos'),
               (LucideIcons.languages, 'Translation settings'),
-              (LucideIcons.slidersHorizontal, 'Discovery preferences'),
             ],
             onTap: (label) {
               switch (label) {
@@ -152,8 +150,6 @@ class MyProfileScreen extends ConsumerWidget {
                 case 'My photos':
                   Navigator.of(context).push(MaterialPageRoute(
                       builder: (_) => const PhotoGalleryScreen()));
-                case 'Discovery preferences':
-                  showDiscoverFilterSheet(context);
                 case 'Translation settings':
                   Navigator.of(context).push(MaterialPageRoute(
                       builder: (_) => const TranslationSettingsScreen()));

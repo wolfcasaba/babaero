@@ -46,9 +46,15 @@ class ChatRepository {
         .inFilter('conversation_id', convIds)
         .order('created_at', ascending: false);
     final lastByConv = <String, Message>{};
+    final unreadByConv = <String, int>{};
     for (final m in msgRows as List) {
       final msg = Message.fromMap(m as Map<String, dynamic>);
       lastByConv.putIfAbsent(msg.conversationId, () => msg);
+      // Incoming + never read → unread. Drives the per-row + tab badges.
+      if (msg.senderId != me && !msg.isRead) {
+        unreadByConv[msg.conversationId] =
+            (unreadByConv[msg.conversationId] ?? 0) + 1;
+      }
     }
 
     return [
@@ -61,6 +67,7 @@ class ChatRepository {
           lastMessage: lastByConv[c['id']],
           lastMessageAt:
               DateTime.parse(c['last_message_at'].toString()).toLocal(),
+          unreadCount: unreadByConv[c['id']] ?? 0,
         ),
     ];
   }
@@ -69,6 +76,14 @@ class ChatRepository {
   Future<void> demoAutoreply(String conversationId) async {
     await SupabaseConfig.db
         .rpc('demo_autoreply', params: {'conv': conversationId});
+  }
+
+  /// Mark every incoming (not-mine) message in the conversation as read.
+  /// Backed by the security-definer `mark_conversation_read` RPC — the client
+  /// can't UPDATE messages directly (no RLS update policy on purpose).
+  Future<void> markRead(String conversationId) async {
+    await SupabaseConfig.db
+        .rpc('mark_conversation_read', params: {'conv': conversationId});
   }
 
   Future<String?> getOrCreateConversationWith(String otherUserId) async {

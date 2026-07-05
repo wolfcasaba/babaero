@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../chat/chat_list_screen.dart';
+import '../chat/data/chat_provider.dart';
 import '../discover/discover_screen.dart';
 import '../matches/matches_screen.dart';
 import '../profile/my_profile_screen.dart';
@@ -29,6 +30,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
+    final unread = ref.watch(unreadTotalProvider);
     return Scaffold(
       body: IndexedStack(index: _index, children: _tabs),
       bottomNavigationBar: NavigationBarTheme(
@@ -44,24 +46,28 @@ class _HomeShellState extends ConsumerState<HomeShell> {
           selectedIndex: _index,
           height: 66,
           onDestinationSelected: (i) => setState(() => _index = i),
-          destinations: const [
-            NavigationDestination(
+          destinations: [
+            const NavigationDestination(
               icon: Icon(LucideIcons.flame),
               label: 'Discover',
             ),
-            NavigationDestination(
+            const NavigationDestination(
               icon: Icon(LucideIcons.newspaper),
               label: 'Feed',
             ),
-            NavigationDestination(
+            const NavigationDestination(
               icon: Icon(LucideIcons.heart),
               label: 'Matches',
             ),
             NavigationDestination(
-              icon: Icon(LucideIcons.messageCircle),
+              icon: Badge(
+                isLabelVisible: unread > 0,
+                label: Text(unread > 99 ? '99+' : '$unread'),
+                child: const Icon(LucideIcons.messageCircle),
+              ),
               label: 'Messages',
             ),
-            NavigationDestination(
+            const NavigationDestination(
               icon: Icon(LucideIcons.user),
               label: 'Profile',
             ),

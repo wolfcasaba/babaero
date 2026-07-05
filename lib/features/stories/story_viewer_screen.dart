@@ -4,7 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../core/theme/app_colors.dart';
 import '../../core/widgets/brand_widgets.dart';
+import '../chat/data/chat_provider.dart';
+import '../chat/data/translation_service.dart';
 import 'data/stories_models.dart';
 import 'data/stories_provider.dart';
 
@@ -31,17 +34,31 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
   late int _group = widget.startGroup;
   int _story = 0;
 
+  final _reply = TextEditingController();
+  final _replyFocus = FocusNode();
+  bool _sendingReply = false;
+
   @override
   void initState() {
     super.initState();
     _c.addStatusListener((s) {
       if (s == AnimationStatus.completed) _next();
     });
+    // Pause the auto-advance while the viewer is composing a reply.
+    _replyFocus.addListener(() {
+      if (_replyFocus.hasFocus) {
+        _c.stop();
+      } else if (!_c.isAnimating) {
+        _c.forward();
+      }
+    });
     _start();
   }
 
   @override
   void dispose() {
+    _reply.dispose();
+    _replyFocus.dispose();
     _c.dispose();
     super.dispose();
   }
@@ -84,6 +101,51 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
       _c.forward(from: 0);
     }
   }
+
+  /// Send a reply / quick reaction to the story's author as a direct message.
+  /// Resolves (or creates) the 1:1 conversation, translates text replies (skips
+  /// pure-emoji reactions), and lands it in the normal chat thread.
+  Future<void> _sendStoryReply(String raw) async {
+    final text = raw.trim();
+    if (text.isEmpty || _sendingReply) return;
+    setState(() => _sendingReply = true);
+    final name = _g.author.name;
+    final repo = ref.read(chatRepositoryProvider);
+    try {
+      final convId = await repo.getOrCreateConversationWith(_g.author.id);
+      if (convId == null) return;
+      String? src;
+      String? target;
+      String? translated;
+      // Translate real text; a lone emoji reaction needs no translation.
+      if (_hasLetters(text)) {
+        src = translationService.detect(text);
+        target = src == 'tl' ? 'en' : 'tl';
+        translated = await translationService.translate(text, target: target);
+      }
+      await repo.send(
+        conversationId: convId,
+        body: text,
+        translatedBody:
+            (translated != null && translated != text) ? translated : null,
+        sourceLang: src,
+        targetLang: target,
+      );
+      if (mounted) {
+        _reply.clear();
+        _replyFocus.unfocus();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Sent to $name 💬')),
+        );
+      }
+    } catch (_) {
+      // ignore — best-effort; the DM screen is the source of truth
+    } finally {
+      if (mounted) setState(() => _sendingReply = false);
+    }
+  }
+
+  static bool _hasLetters(String s) => RegExp(r'[A-Za-z]').hasMatch(s);
 
   @override
   Widget build(BuildContext context) {
@@ -193,13 +255,15 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
                 ],
               ),
             ),
-            // Caption.
-            if (_s.caption != null && _s.caption!.isNotEmpty)
-              Align(
-                alignment: Alignment.bottomCenter,
+            // Caption + reply bar, lifted above the keyboard when composing.
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: Padding(
+                padding: EdgeInsets.only(
+                    bottom: MediaQuery.of(context).viewInsets.bottom),
                 child: Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
+                  padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.bottomCenter,
@@ -207,15 +271,133 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
                       colors: [Color(0xCC000000), Colors.transparent],
                     ),
                   ),
-                  child: Text(
-                    _s.caption!,
-                    style: const TextStyle(color: Colors.white, fontSize: 16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (_s.caption != null && _s.caption!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 14, left: 4),
+                          child: Text(
+                            _s.caption!,
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 16),
+                          ),
+                        ),
+                      // No replying to your own story.
+                      if (!_g.isMine) _StoryReplyBar(
+                        authorName: author.name,
+                        controller: _reply,
+                        focusNode: _replyFocus,
+                        sending: _sendingReply,
+                        onReact: _sendStoryReply,
+                        onSend: () => _sendStoryReply(_reply.text),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                   ),
                 ),
               ),
+            ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The reply composer at the bottom of a story: a row of one-tap emoji
+/// reactions + a text field that sends a direct message to the story's author.
+class _StoryReplyBar extends StatelessWidget {
+  final String authorName;
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final bool sending;
+  final ValueChanged<String> onReact;
+  final VoidCallback onSend;
+
+  const _StoryReplyBar({
+    required this.authorName,
+    required this.controller,
+    required this.focusNode,
+    required this.sending,
+    required this.onReact,
+    required this.onSend,
+  });
+
+  static const _reactions = ['❤️', '🔥', '😂', '😮', '👍', '🙌'];
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          height: 40,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: _reactions.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 6),
+            itemBuilder: (_, i) {
+              final emoji = _reactions[i];
+              return GestureDetector(
+                onTap: sending ? null : () => onReact(emoji),
+                child: Container(
+                  width: 40,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.14),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Text(emoji, style: const TextStyle(fontSize: 20)),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: controller,
+                focusNode: focusNode,
+                enabled: !sending,
+                style: const TextStyle(color: Colors.white),
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => onSend(),
+                decoration: InputDecoration(
+                  isDense: true,
+                  hintText: 'Reply to $authorName…',
+                  hintStyle: const TextStyle(color: Colors.white70),
+                  filled: true,
+                  fillColor: Colors.white.withValues(alpha: 0.12),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: sending ? null : onSend,
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: const BoxDecoration(
+                  gradient: AppColors.brandGradient,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(LucideIcons.send,
+                    color: Colors.white, size: 18),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

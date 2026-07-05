@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../core/supabase/supabase_config.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/brand_widgets.dart';
 import '../discover/data/profile_models.dart';
@@ -11,6 +12,7 @@ import '../settings/data/app_settings.dart';
 import 'data/chat_models.dart';
 import 'data/chat_provider.dart';
 import 'data/translation_service.dart';
+import 'data/typing_channel.dart';
 import 'widgets/message_widgets.dart';
 
 /// A 1:1 conversation. Resolves (or creates) the conversation, streams its
@@ -29,9 +31,17 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
   String? _conversationId;
   bool _sending = false;
 
+  // Newest incoming message we've already marked read — avoids re-firing the
+  // mark-read RPC on every stream tick.
+  String? _lastReadMsgId;
+
+  // Realtime typing indicator (created once the conversation id resolves).
+  TypingChannel? _typing;
+
   @override
   void initState() {
     super.initState();
+    _input.addListener(_onTyping);
     _resolveConversation();
   }
 
@@ -39,11 +49,66 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
     final id = await ref
         .read(chatRepositoryProvider)
         .getOrCreateConversationWith(widget.profile.id);
-    if (mounted) setState(() => _conversationId = id);
+    if (!mounted) return;
+    setState(() => _conversationId = id);
+    if (id != null) {
+      _typing = TypingChannel(id)..connect();
+    }
+  }
+
+  void _onTyping() {
+    if (_input.text.trim().isNotEmpty) _typing?.notifyTyping();
+  }
+
+  /// App-bar subtitle: "typing…" (accent) while the other person types, else the
+  /// online / active-recently presence line.
+  Widget _statusLine(ColorScheme cs, {required bool typing}) {
+    if (typing) {
+      return Text(
+        'typing…',
+        style: const TextStyle(
+          fontSize: 12,
+          color: AppColors.secondary,
+          fontStyle: FontStyle.italic,
+          fontWeight: FontWeight.w600,
+        ),
+      );
+    }
+    final online = widget.profile.online;
+    return Text(
+      online ? 'Online now' : 'Active recently',
+      style: TextStyle(
+        fontSize: 12,
+        color: online ? AppColors.online : cs.outline,
+      ),
+    );
+  }
+
+  /// Mark the newest incoming message read (once), then refresh the list so the
+  /// unread badges clear. Called from the message stream as data arrives.
+  void _markReadUpTo(String convId, List<Message> messages, String? myId) {
+    Message? newestIncoming;
+    for (final m in messages) {
+      if (!m.mine(myId)) newestIncoming = m;
+    }
+    if (newestIncoming == null || newestIncoming.id == _lastReadMsgId) return;
+    _lastReadMsgId = newestIncoming.id;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        // No-ops gracefully until migration 14 (mark_conversation_read) is
+        // applied to the hosted DB.
+        await ref.read(chatRepositoryProvider).markRead(convId);
+        ref.invalidate(conversationsProvider);
+      } catch (_) {
+        // ignore — receipts simply stay unread until the RPC exists
+      }
+    });
   }
 
   @override
   void dispose() {
+    _input.removeListener(_onTyping);
+    _typing?.dispose();
     _input.dispose();
     _scroll.dispose();
     super.dispose();
@@ -75,10 +140,13 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
         sourceLang: src,
         targetLang: target,
       );
-      // Demo liveliness: the other person replies shortly after.
-      Future.delayed(const Duration(milliseconds: 1400), () {
-        repo.demoAutoreply(convId);
-      });
+      // Demo liveliness: on the seed/demo account the other person replies
+      // shortly after. Never fires for real members — they chat for real.
+      if (SupabaseConfig.isDemoAccount) {
+        Future.delayed(const Duration(milliseconds: 1400), () {
+          repo.demoAutoreply(convId);
+        });
+      }
     } catch (_) {
       // ignore — realtime will reconcile
     } finally {
@@ -100,9 +168,11 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
       final url = await repo.uploadImage(bytes, ext: ext == 'png' ? 'png' : 'jpg');
       if (url != null) {
         await repo.send(conversationId: convId, body: '', imageUrl: url);
-        Future.delayed(const Duration(milliseconds: 1400), () {
-          repo.demoAutoreply(convId);
-        });
+        if (SupabaseConfig.isDemoAccount) {
+          Future.delayed(const Duration(milliseconds: 1400), () {
+            repo.demoAutoreply(convId);
+          });
+        }
       }
     } catch (_) {
       // ignore — realtime will reconcile
@@ -117,15 +187,6 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
     );
   }
 
-  void _scrollToBottom() {
-    if (!_scroll.hasClients) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scroll.hasClients) {
-        _scroll.jumpTo(_scroll.position.maxScrollExtent);
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -136,7 +197,6 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
     final messagesAsync = convId == null
         ? const AsyncValue<List<Message>>.loading()
         : ref.watch(messagesStreamProvider(convId));
-    messagesAsync.whenData((_) => _scrollToBottom());
 
     return Scaffold(
       appBar: AppBar(
@@ -173,13 +233,12 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                     ],
                   ],
                 ),
-                Text(
-                  p.online ? 'Online now' : 'Active recently',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: p.online ? AppColors.online : cs.outline,
-                  ),
-                ),
+                _typing == null
+                    ? _statusLine(cs, typing: false)
+                    : ValueListenableBuilder<bool>(
+                        valueListenable: _typing!.othersTyping,
+                        builder: (_, typing, _) => _statusLine(cs, typing: typing),
+                      ),
               ],
             ),
           ],
@@ -218,18 +277,25 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                     },
                   );
                 }
+                if (convId != null) _markReadUpTo(convId, messages, myId);
                 return ListView.builder(
                   controller: _scroll,
+                  reverse: true,
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                   itemCount: messages.length,
                   itemBuilder: (_, i) {
-                    final m = messages[i];
+                    // Newest anchors to the bottom (index 0 with reverse:true),
+                    // so a just-sent message sits right above the composer.
+                    final m = messages[messages.length - 1 - i];
+                    final mine = m.mine(myId);
                     return MessageBubble(
-                      mine: m.mine(myId),
+                      mine: mine,
                       body: m.body,
                       translatedBody: m.translatedBody,
                       imageUrl: m.imageUrl,
                       createdAt: m.createdAt,
+                      // Receipt only on my own bubbles: ✓ sent, ✓✓ read.
+                      readReceipt: mine ? m.isRead : null,
                     );
                   },
                 );

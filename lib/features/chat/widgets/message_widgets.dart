@@ -129,6 +129,11 @@ class MessageBubble extends StatelessWidget {
   final bool showSender;
   final double maxWidthFactor;
 
+  /// Read receipt for the sender's own bubbles (1:1 only). null = don't show a
+  /// receipt (incoming bubbles, or group mode); false = sent/unread (single ✓);
+  /// true = read by the recipient (double ✓✓ in the brand accent).
+  final bool? readReceipt;
+
   const MessageBubble({
     super.key,
     required this.mine,
@@ -140,6 +145,7 @@ class MessageBubble extends StatelessWidget {
     this.sender,
     this.showSender = false,
     this.maxWidthFactor = 0.74,
+    this.readReceipt,
   });
 
   bool get _hasImage => imageUrl != null && imageUrl!.isNotEmpty;
@@ -264,8 +270,21 @@ class MessageBubble extends StatelessWidget {
           Padding(
             padding:
                 EdgeInsets.only(top: 4, left: showAvatarRow ? 38 : 4, right: 4),
-            child: Text(_time(createdAt),
-                style: TextStyle(fontSize: 11, color: cs.outline)),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(_time(createdAt),
+                    style: TextStyle(fontSize: 11, color: cs.outline)),
+                if (mine && readReceipt != null) ...[
+                  const SizedBox(width: 4),
+                  Icon(
+                    readReceipt! ? LucideIcons.checkCheck : LucideIcons.check,
+                    size: 13,
+                    color: readReceipt! ? AppColors.secondary : cs.outline,
+                  ),
+                ],
+              ],
+            ),
           ),
         ],
       ),

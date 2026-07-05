@@ -186,6 +186,7 @@ class _ConversationTile extends ConsumerWidget {
     final last = view.lastMessage;
     final preview = last?.body ?? 'You matched — say hi! 👋';
     final mineLast = last?.mine(myId) ?? false;
+    final unread = view.hasUnread;
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       leading: Stack(
@@ -215,10 +216,26 @@ class _ConversationTile extends ConsumerWidget {
         mineLast ? 'You: $preview' : preview,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: TextStyle(color: cs.outline),
+        // Unread incoming → emphasise the preview so it stands out at a glance.
+        style: TextStyle(
+          color: unread ? cs.onSurface : cs.outline,
+          fontWeight: unread ? FontWeight.w600 : FontWeight.w400,
+        ),
       ),
-      trailing: Text(_shortTime(view.lastMessageAt),
-          style: TextStyle(fontSize: 12, color: cs.outline)),
+      trailing: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(_shortTime(view.lastMessageAt),
+              style: TextStyle(
+                fontSize: 12,
+                color: unread ? AppColors.primary : cs.outline,
+                fontWeight: unread ? FontWeight.w700 : FontWeight.w400,
+              )),
+          const SizedBox(height: 4),
+          if (unread) _UnreadPill(count: view.unreadCount),
+        ],
+      ),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => ChatThreadScreen(profile: view.other),
@@ -308,6 +325,34 @@ class _ChatSearchDelegate extends SearchDelegate<void> {
             },
           ),
       ],
+    );
+  }
+}
+
+/// Small brand-gradient pill showing the unread message count on a chat row.
+class _UnreadPill extends StatelessWidget {
+  final int count;
+  const _UnreadPill({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 20),
+      height: 20,
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      decoration: const BoxDecoration(
+        gradient: AppColors.brandGradient,
+        borderRadius: BorderRadius.all(Radius.circular(10)),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        count > 99 ? '99+' : '$count',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
     );
   }
 }

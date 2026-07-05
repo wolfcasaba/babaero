@@ -164,16 +164,27 @@ class HttpTranslationService extends TranslationService {
     try {
       final res = await _dio.get(
         'https://api.mymemory.translated.net/get',
-        queryParameters: {'q': trimmed, 'langpair': '$source|$target'},
+        queryParameters: {
+          'q': trimmed,
+          'langpair': '$source|$target',
+          // A valid contact email lifts the anonymous quota from 5k to 50k
+          // words/day — without it real users hit the limit fast and every
+          // message falls back to the tiny offline phrase map (looks broken).
+          'de': _quotaEmail,
+        },
       );
       final data = res.data;
       final out = (data is Map)
           ? (data['responseData']?['translatedText'] as String?)
           : null;
-      if (out != null &&
+      final status = (data is Map) ? data['responseStatus'] : null;
+      final ok = status == 200 || status == '200' || status == null;
+      if (ok &&
+          out != null &&
           out.trim().isNotEmpty &&
           !out.toUpperCase().contains('MYMEMORY WARNING') &&
-          !out.toUpperCase().contains('QUERY LENGTH LIMIT')) {
+          !out.toUpperCase().contains('QUERY LENGTH LIMIT') &&
+          !out.toUpperCase().contains('INVALID EMAIL')) {
         final cleaned = out.trim();
         _cache[cacheKey] = cleaned;
         return cleaned;
@@ -183,6 +194,13 @@ class HttpTranslationService extends TranslationService {
     }
     return _fallback.translateSync(trimmed, target: target);
   }
+
+  /// Contact email attached to MyMemory requests to raise the daily quota.
+  /// Overridable at build time so a deployment can point at its own address.
+  static const String _quotaEmail = String.fromEnvironment(
+    'MYMEMORY_EMAIL',
+    defaultValue: 'hello@babaero.app',
+  );
 }
 
 /// Global instance. Swap for a different backend in main() if needed.
