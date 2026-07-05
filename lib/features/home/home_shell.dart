@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../core/supabase/supabase_config.dart';
+import '../call/data/call_models.dart';
+import '../call/data/call_provider.dart';
+import '../call/incoming_call_screen.dart';
 import '../chat/chat_list_screen.dart';
 import '../chat/data/chat_provider.dart';
 import '../discover/discover_screen.dart';
@@ -21,6 +25,7 @@ class HomeShell extends ConsumerStatefulWidget {
 class _HomeShellState extends ConsumerState<HomeShell>
     with WidgetsBindingObserver {
   int _index = 0;
+  bool _incomingActive = false;
 
   static const _tabs = [
     DiscoverScreen(),
@@ -36,6 +41,30 @@ class _HomeShellState extends ConsumerState<HomeShell>
     WidgetsBinding.instance.addObserver(this);
     // Mark online as soon as the app is in the foreground on the home shell.
     _setOnline(true);
+    // Subscribe to the call inbox so we can ring for incoming calls anywhere.
+    ref.read(callSignalingProvider).connect();
+  }
+
+  /// Raise the incoming-call screen for an invite (or auto-reject as busy if a
+  /// call is already on screen).
+  Future<void> _onInvite(CallSignal invite) async {
+    if (_incomingActive) {
+      final myId = SupabaseConfig.client.auth.currentUser?.id ?? '';
+      ref.read(callSignalingProvider).send(
+            invite.from,
+            CallSignal(
+                type: CallSignalType.busy, callId: invite.callId, from: myId),
+          );
+      return;
+    }
+    _incomingActive = true;
+    await Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => IncomingCallScreen(invite: invite),
+      ),
+    );
+    _incomingActive = false;
   }
 
   @override
@@ -59,6 +88,11 @@ class _HomeShellState extends ConsumerState<HomeShell>
   @override
   Widget build(BuildContext context) {
     final unread = ref.watch(unreadTotalProvider);
+    // Ring for incoming calls from any tab.
+    ref.listen(incomingInviteProvider, (_, next) {
+      final invite = next.value;
+      if (invite != null) _onInvite(invite);
+    });
     return Scaffold(
       body: IndexedStack(index: _index, children: _tabs),
       bottomNavigationBar: NavigationBarTheme(

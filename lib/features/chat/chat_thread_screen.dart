@@ -13,6 +13,8 @@ import '../../core/supabase/supabase_config.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/brand_widgets.dart';
 import '../../core/widgets/error_retry.dart';
+import '../call/call_screen.dart';
+import '../call/data/call_models.dart';
 import '../discover/data/profile_models.dart';
 import '../settings/data/app_settings.dart';
 import '../safety/widgets/safety_actions.dart';
@@ -275,10 +277,29 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
     }
   }
 
-  void _comingSoon(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Calls are coming soon.')),
-    );
+  /// Start an outgoing WebRTC call to the other member.
+  void _startCall(CallMedia media) {
+    final p = widget.profile;
+    final myId = ref.read(chatRepositoryProvider).myId;
+    if (myId == null) return; // not signed in
+    final callId = '$myId|${DateTime.now().microsecondsSinceEpoch}';
+    Navigator.of(context).push(MaterialPageRoute(
+      fullscreenDialog: true,
+      builder: (_) => CallScreen(
+        callId: callId,
+        peer: CallPeer(
+          id: p.id,
+          name: p.name,
+          photoUrl: p.photoUrl,
+          initial: p.initial,
+          colorA: p.colorA,
+          colorB: p.colorB,
+        ),
+        conversationId: _conversationId ?? '',
+        media: media,
+        isCaller: true,
+      ),
+    ));
   }
 
   /// Block/report the other member from inside the thread (safety reachable
@@ -349,12 +370,12 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
           IconButton(
             icon: const Icon(LucideIcons.video),
             tooltip: 'Video call',
-            onPressed: () => _comingSoon(context),
+            onPressed: () => _startCall(CallMedia.video),
           ),
           IconButton(
             icon: const Icon(LucideIcons.phone),
             tooltip: 'Voice call',
-            onPressed: () => _comingSoon(context),
+            onPressed: () => _startCall(CallMedia.audio),
           ),
           PopupMenuButton<String>(
             icon: const Icon(LucideIcons.ellipsisVertical),
