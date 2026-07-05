@@ -148,10 +148,14 @@ class ChatRepository {
 
   /// Upload a recorded voice note to the sender's folder in the public `chat`
   /// bucket; returns its public URL.
+  ///
+  /// The path MUST start with the uid: the chat bucket's insert policy checks
+  /// `foldername(name)[1] = auth.uid()`. A `voice/<uid>/…` path put 'voice'
+  /// first and was rejected by RLS ("Could not send voice note").
   Future<String?> uploadVoice(Uint8List bytes, {String ext = 'm4a'}) async {
     final me = myId;
     if (me == null) return null;
-    final path = 'voice/$me/${DateTime.now().millisecondsSinceEpoch}.$ext';
+    final path = '$me/voice/${DateTime.now().millisecondsSinceEpoch}.$ext';
     final storage = SupabaseConfig.client.storage.from('chat');
     await storage.uploadBinary(
       path,
