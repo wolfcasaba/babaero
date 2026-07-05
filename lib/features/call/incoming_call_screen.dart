@@ -10,6 +10,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/supabase/supabase_config.dart';
 import '../../core/widgets/brand_widgets.dart';
 import 'call_screen.dart';
+import 'data/call_audio.dart';
 import 'data/call_models.dart';
 import 'data/call_provider.dart';
 
@@ -31,6 +32,7 @@ class IncomingCallScreen extends ConsumerStatefulWidget {
 class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen> {
   StreamSubscription? _sub;
   Timer? _ring;
+  final _audio = CallAudio();
   bool _handled = false;
 
   @override
@@ -45,7 +47,8 @@ class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen> {
             (s.type == CallSignalType.cancel ||
                 s.type == CallSignalType.hangup))
         .listen((_) => _close());
-    // Ring feedback until answered (no ringtone asset in R1).
+    // Audible ringtone + haptic pulse until answered.
+    _audio.incomingRing();
     _ring = Timer.periodic(const Duration(milliseconds: 1200), (_) {
       HapticFeedback.mediumImpact();
     });
@@ -55,6 +58,7 @@ class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen> {
   void dispose() {
     _sub?.cancel();
     _ring?.cancel();
+    _audio.dispose();
     super.dispose();
   }
 
@@ -68,6 +72,7 @@ class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen> {
     if (_handled) return;
     _handled = true;
     _ring?.cancel();
+    _audio.stop();
     final inv = widget.invite;
     Navigator.of(context).pushReplacement(MaterialPageRoute(
       builder: (_) => CallScreen(
@@ -84,6 +89,7 @@ class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen> {
     if (_handled) return;
     _handled = true;
     _ring?.cancel();
+    _audio.stop();
     final inv = widget.invite;
     final selfId = SupabaseConfig.client.auth.currentUser?.id ?? '';
     ref.read(callSignalingProvider).send(

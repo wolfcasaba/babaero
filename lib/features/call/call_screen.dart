@@ -10,6 +10,7 @@ import '../../core/supabase/supabase_config.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/brand_widgets.dart';
 import '../profile/data/profile_provider.dart';
+import 'data/call_audio.dart';
 import 'data/call_ice.dart';
 import 'data/call_models.dart';
 import 'data/call_provider.dart';
@@ -41,6 +42,7 @@ class CallScreen extends ConsumerStatefulWidget {
 class _CallScreenState extends ConsumerState<CallScreen> {
   final _localRenderer = RTCVideoRenderer();
   final _remoteRenderer = RTCVideoRenderer();
+  final _audio = CallAudio();
 
   RTCPeerConnection? _pc;
   MediaStream? _localStream;
@@ -140,6 +142,7 @@ class _CallScreenState extends ConsumerState<CallScreen> {
 
       if (widget.isCaller) {
         await _sendInvite();
+        _audio.outgoingRing(); // ringback while dialing
         // Ring for a while, then give up if unanswered.
         _ringTimeout = Timer(const Duration(seconds: 40), () {
           if (_phase == CallPhase.dialing) {
@@ -192,6 +195,7 @@ class _CallScreenState extends ConsumerState<CallScreen> {
       case CallSignalType.accept:
         if (widget.isCaller && _phase == CallPhase.dialing) {
           _ringTimeout?.cancel();
+          _audio.stop(); // callee picked up — stop the ringback
           setState(() => _phase = CallPhase.connecting);
           await _makeOffer();
         }
@@ -289,6 +293,7 @@ class _CallScreenState extends ConsumerState<CallScreen> {
 
   void _onConnected() {
     if (_ended || _phase == CallPhase.active) return;
+    _audio.stop(); // media is flowing — no more ringback
     setState(() => _phase = CallPhase.active);
     _durationTimer?.cancel();
     _durationTimer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -334,6 +339,17 @@ class _CallScreenState extends ConsumerState<CallScreen> {
     _ended = true;
     _ringTimeout?.cancel();
     _durationTimer?.cancel();
+    await _audio.stop();
+    // Audible "not reachable / declined" feedback before we close.
+    const negative = {
+      CallStatus.missed,
+      CallStatus.rejected,
+      CallStatus.failed,
+    };
+    if (negative.contains(status)) {
+      await _audio.endTone();
+      await Future.delayed(const Duration(milliseconds: 900));
+    }
     if (status == CallStatus.ended && _phase == CallPhase.active) {
       ref.read(callRepositoryProvider).logStatus(widget.callId, status, ended: true);
     } else if (widget.isCaller) {
@@ -359,6 +375,7 @@ class _CallScreenState extends ConsumerState<CallScreen> {
     _localRenderer.dispose();
     _remoteRenderer.dispose();
     _pc?.close();
+    _audio.dispose();
     super.dispose();
   }
 
