@@ -8,6 +8,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/widgets/brand_widgets.dart';
 import '../chat/data/chat_provider.dart';
 import '../chat/data/translation_service.dart';
+import '../discover/data/profile_models.dart';
 import 'data/stories_models.dart';
 import 'data/stories_provider.dart';
 
@@ -160,6 +161,53 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
 
   static bool _hasLetters(String s) => RegExp(r'[A-Za-z]').hasMatch(s);
 
+  /// Delete the currently shown story (own stories only), then move on.
+  Future<void> _deleteCurrentStory() async {
+    _c.stop();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete this story?'),
+        content: const Text('It will be removed for everyone.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete',
+                style: TextStyle(color: AppColors.danger)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) {
+      _c.forward();
+      return;
+    }
+    try {
+      await ref.read(storyRepositoryProvider).deleteStory(_s.id);
+    } catch (_) {
+      // best-effort
+    }
+    ref.invalidate(storiesProvider);
+    if (mounted) Navigator.of(context).maybePop();
+  }
+
+  /// Bottom sheet listing who viewed this story (own stories only).
+  Future<void> _showViewers() async {
+    _c.stop();
+    final storyId = _s.id;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (_) => _ViewersSheet(
+        future: ref.read(storyRepositoryProvider).viewers(storyId),
+      ),
+    );
+    if (mounted && !_replyFocus.hasFocus) _c.forward();
+  }
+
   @override
   Widget build(BuildContext context) {
     final author = _g.author;
@@ -255,6 +303,13 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
                                 fontWeight: FontWeight.w600),
                           ),
                         ),
+                        if (_g.isMine)
+                          IconButton(
+                            icon: const Icon(LucideIcons.trash2,
+                                color: Colors.white),
+                            tooltip: 'Delete story',
+                            onPressed: _deleteCurrentStory,
+                          ),
                         IconButton(
                           icon: const Icon(LucideIcons.x, color: Colors.white),
                           onPressed: () {
@@ -297,15 +352,28 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
                                 color: Colors.white, fontSize: 16),
                           ),
                         ),
-                      // No replying to your own story.
-                      if (!_g.isMine) _StoryReplyBar(
-                        authorName: author.name,
-                        controller: _reply,
-                        focusNode: _replyFocus,
-                        sending: _sendingReply,
-                        onReact: _sendStoryReply,
-                        onSend: () => _sendStoryReply(_reply.text),
-                      ),
+                      // Your own story shows a "seen by" entry; others get the
+                      // reply composer.
+                      if (_g.isMine)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            onPressed: _showViewers,
+                            icon: const Icon(LucideIcons.eye,
+                                color: Colors.white, size: 18),
+                            label: const Text('Viewers',
+                                style: TextStyle(color: Colors.white)),
+                          ),
+                        )
+                      else
+                        _StoryReplyBar(
+                          authorName: author.name,
+                          controller: _reply,
+                          focusNode: _replyFocus,
+                          sending: _sendingReply,
+                          onReact: _sendStoryReply,
+                          onSend: () => _sendStoryReply(_reply.text),
+                        ),
                       const SizedBox(height: 12),
                     ],
                   ),
@@ -314,6 +382,73 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// "Seen by" list for the author's own story.
+class _ViewersSheet extends StatelessWidget {
+  final Future<List<Profile>> future;
+  const _ViewersSheet({required this.future});
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: FutureBuilder<List<Profile>>(
+        future: future,
+        builder: (context, snap) {
+          if (snap.connectionState != ConnectionState.done) {
+            return const Padding(
+              padding: EdgeInsets.all(32),
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+          final viewers = snap.data ?? const [];
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                child: Row(
+                  children: [
+                    const Icon(LucideIcons.eye, size: 18),
+                    const SizedBox(width: 8),
+                    Text('Seen by ${viewers.length}',
+                        style: GoogleFonts.poppins(
+                            fontSize: 16, fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+              if (viewers.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(20, 8, 20, 24),
+                  child: Text('No views yet.'),
+                )
+              else
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final v in viewers)
+                        ListTile(
+                          leading: ProfileAvatar(
+                            photoUrl: v.photoUrl,
+                            initial: v.initial,
+                            colorA: v.colorA,
+                            colorB: v.colorB,
+                            size: 40,
+                          ),
+                          title: Text(v.name),
+                        ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 8),
+            ],
+          );
+        },
       ),
     );
   }

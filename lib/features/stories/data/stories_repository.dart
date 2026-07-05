@@ -15,6 +15,12 @@ abstract class StoryRepository {
   Future<String?> uploadStoryImage(Uint8List bytes, {String ext = 'jpg'});
   Future<void> addStory({required String imageUrl, String? caption});
   Future<void> markViewed(String storyId);
+
+  /// Profiles who viewed a story (author-only, for the "seen by" list).
+  Future<List<Profile>> viewers(String storyId);
+
+  /// Delete one of the current user's own stories.
+  Future<void> deleteStory(String storyId);
 }
 
 class SupabaseStoryRepository implements StoryRepository {
@@ -117,6 +123,31 @@ class SupabaseStoryRepository implements StoryRepository {
     );
   }
 
+  @override
+  Future<List<Profile>> viewers(String storyId) async {
+    final rows = await SupabaseConfig.db
+        .from('story_views')
+        .select('viewer_id')
+        .eq('story_id', storyId);
+    final ids = [
+      for (final r in rows as List) (r as Map)['viewer_id'] as String,
+    ];
+    if (ids.isEmpty) return [];
+    final profiles = await _profilesById(ids.toSet());
+    return [for (final id in ids) if (profiles[id] != null) profiles[id]!];
+  }
+
+  @override
+  Future<void> deleteStory(String storyId) async {
+    final uid = _uid;
+    if (uid == null) return;
+    await SupabaseConfig.db
+        .from('stories')
+        .delete()
+        .eq('id', storyId)
+        .eq('author_id', uid);
+  }
+
   Future<Map<String, Profile>> _profilesById(Set<String> ids) async {
     if (ids.isEmpty) return {};
     final rows = await SupabaseConfig.db
@@ -184,4 +215,8 @@ class PreviewStoryRepository implements StoryRepository {
   Future<void> addStory({required String imageUrl, String? caption}) async {}
   @override
   Future<void> markViewed(String storyId) async {}
+  @override
+  Future<List<Profile>> viewers(String storyId) async => const [];
+  @override
+  Future<void> deleteStory(String storyId) async {}
 }
