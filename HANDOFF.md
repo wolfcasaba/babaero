@@ -116,9 +116,50 @@ succeeded → APK live at releases/latest/download/app-release.apk. Everything a
 Migration path that works: PLAIN `curl` (no spoofed User-Agent) to the Management API
 `/database/query` with a user-pasted `sbp_` token — a browser UA gets classifier-blocked.
 
+## SHIPPED 2026-07-05 (R3 + R4) — Release **v1.0.12**, v1.0.6+7, commits `c5d5dbb..9190744`
+Two big pushes on top of v1.0.10, both LIVE (migrations 14→19 all applied via plain-curl
+Management API; CI APK green at the releases/latest link).
+
+**R3 chat round (commit `43dceca`):** read receipts (✓/✓✓ + unread badges, migration 14
+`mark_conversation_read` RPC), typing indicator (realtime broadcast, no schema change), story
+replies + emoji reactions → DM the author. Also gated `demo_autoreply` to `@demo.local` only,
+strengthened MyMemory translation, and rebuilt Discover as a Tinder swipe deck.
+
+**R4 audit + 3 improvement waves** (a 4-agent module audit + web research drove these; user picked
+critical-bugs → safety → engagement, deprioritised monetization):
+- **W1 correctness (`b5ac3d7`):** hid phantom "0 km" (schema has NO distance_km); stop dropping
+  likes on rapid swipes; exclude already-liked profiles from the deck; gender filter is a hard
+  constraint; **app-level realtime pulse** so unread badge/previews update live; bounded
+  conversations() fetch + separate unread count; story-reply refreshes list + error feedback;
+  timeline **cursor pagination** (was a hard 50-cap) + PostCard state re-sync.
+- **W2 safety + launch-blockers (`f9c89ce`):** block now filters Matches/chat/feed + **RLS both
+  directions** (migration 15 `is_blocked_between`); in-chat block/report (shared
+  `showSafetyActions`); **forgot-password**; **delete-account** (edge fn + type-DELETE UI);
+  **presence** via HomeShell `WidgetsBindingObserver`→setOnline; verification **selfie capture** to
+  a PRIVATE bucket (migration 16).
+- **W3 engagement (`3993405`, `810c767`, `4c33596`):** swipe-card **photo carousel**; **rewind/undo**
+  (migration 17 `likes_delete`); story **"Viewers"/seen-by + delete** (migration 18); **live matches**;
+  **prompts in onboarding**; **voice notes** in 1:1 chat (record ^6 + audioplayers + path_provider,
+  RECORD_AUDIO, minSdk 24, migration 19 `voice_url`/`voice_dur_ms`); realtime feed **"new posts" pill**.
+
+**⚠️ ONE pending item:** the **`delete-account` edge function is NOT deployed** — the safety
+classifier blocked deploying a service-role edge fn (distinct from SQL migrations). Code is at
+`supabase/functions/delete-account/index.ts`; the UI degrades gracefully (error snackbar). Deploy
+with `supabase functions deploy delete-account` (needs the project SERVICE_ROLE secret) or grant
+explicit auth to retry via the Management API.
+
+**⚠️ BUILD GOTCHA (one failed CI run):** `record ^5.2.0` resolved a stale `record_linux 0.7.2`
+against `record_platform_interface 1.6.0` (missing `startStream`, mismatched `hasPermission`).
+`flutter build apk` compiles ALL platform impls in the kernel snapshot, so the Linux plugin failed
+the **Android** build — and `flutter analyze` did NOT catch it (it doesn't compile plugin source).
+Fix: bump to `record ^6.0.0` (consistent record_linux 1.3.1). Rule: on a CI `record_*`/`*_linux`
+"missing implementations" error, bump the top federated package and verify the resolved impl in
+`~/.pub-cache`.
+
 ### Next candidates (not yet built)
-Referral/invite system · daily streak/rewards · quality polish (verification selfie capture,
-forgot-password, empty-state CTAs, online presence on lifecycle) · native FCM push wiring.
+Deploy the delete-account edge fn · monetization (real `is_gold` gate: who-liked-you blur+unlock,
+daily like limit, boost cooldown, micro-gifts) · voice notes in GROUP chat · realtime feed for the
+whole list (not just the pill) · referral/invite · daily streak/rewards · native FCM push wiring.
 
 ## Group chat (round 0)
 - **NEW — Group chat, CODE DONE 2026-07-04 (not committed, migration not applied).**
