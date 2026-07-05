@@ -1,12 +1,15 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/brand_widgets.dart';
+import '../../auth/data/auth_provider.dart';
 import '../../chat/data/translation_service.dart';
+import '../../safety/data/safety_provider.dart';
 import '../data/timeline_models.dart';
 import '../data/timeline_provider.dart';
 import 'comments_sheet.dart';
@@ -96,6 +99,139 @@ class _PostCardState extends ConsumerState<PostCard> {
     ).then((_) => ref.invalidate(feedProvider));
   }
 
+  Future<void> _share() async {
+    final text = widget.post.content;
+    await Clipboard.setData(ClipboardData(text: text));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Post copied to clipboard')),
+      );
+    }
+  }
+
+  Future<void> _openMenu() async {
+    final myId = ref.read(currentUserIdProvider);
+    final mine = myId != null && myId == widget.post.author.id;
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(LucideIcons.copy),
+              title: const Text('Copy text'),
+              onTap: () => Navigator.pop(ctx, 'copy'),
+            ),
+            if (mine)
+              ListTile(
+                leading: const Icon(LucideIcons.trash2, color: AppColors.danger),
+                title: const Text('Delete post'),
+                onTap: () => Navigator.pop(ctx, 'delete'),
+              )
+            else
+              ListTile(
+                leading: const Icon(LucideIcons.flag, color: AppColors.secondary),
+                title: const Text('Report post'),
+                onTap: () => Navigator.pop(ctx, 'report'),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    switch (action) {
+      case 'copy':
+        await _share();
+      case 'delete':
+        await _confirmDelete();
+      case 'report':
+        await _report();
+    }
+  }
+
+  Future<void> _confirmDelete() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete post?'),
+        content: const Text('This permanently removes your post.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child:
+                const Text('Delete', style: TextStyle(color: AppColors.danger)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await ref.read(timelineRepositoryProvider).deletePost(widget.post.id);
+      ref.invalidate(feedProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Post deleted.')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not delete. Try again.')),
+        );
+      }
+    }
+  }
+
+  Future<void> _report() async {
+    const reasons = [
+      'Spam',
+      'Inappropriate content',
+      'Harassment or abuse',
+      'Scam',
+      'Something else',
+    ];
+    final reason = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final r in reasons)
+              ListTile(
+                title: Text(r),
+                onTap: () => Navigator.pop(ctx, r),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (reason == null) return;
+    try {
+      await ref.read(safetyRepositoryProvider).report(
+            widget.post.author.id,
+            reason: 'Post: $reason',
+          );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Thanks — we\'ll review this post.')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not send report. Try again.')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -166,7 +302,8 @@ class _PostCardState extends ConsumerState<PostCard> {
                 ),
                 IconButton(
                   icon: const Icon(LucideIcons.ellipsis, size: 20),
-                  onPressed: () {},
+                  tooltip: 'More',
+                  onPressed: _openMenu,
                 ),
               ],
             ),
@@ -293,7 +430,7 @@ class _PostCardState extends ConsumerState<PostCard> {
                   child: _ActionButton(
                     icon: LucideIcons.share2,
                     label: 'Share',
-                    onTap: () {},
+                    onTap: _share,
                   ),
                 ),
               ],

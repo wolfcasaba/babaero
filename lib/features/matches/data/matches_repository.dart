@@ -11,6 +11,9 @@ abstract class MatchesRepository {
 
   /// How many members have liked the current user.
   Future<int> likesYouCount();
+
+  /// The profiles who have liked the current user (the "likes you" list).
+  Future<List<Profile>> whoLikedMe();
 }
 
 class SupabaseMatchesRepository implements MatchesRepository {
@@ -55,6 +58,28 @@ class SupabaseMatchesRepository implements MatchesRepository {
         await SupabaseConfig.db.from('likes').select('liker_id').eq('liked_id', me);
     return (rows as List).length;
   }
+
+  @override
+  Future<List<Profile>> whoLikedMe() async {
+    final me = _uid;
+    if (me == null) return [];
+    final rows = await SupabaseConfig.db
+        .from('likes')
+        .select('liker_id')
+        .eq('liked_id', me)
+        .order('created_at', ascending: false);
+    final likerIds = [
+      for (final r in rows as List) (r as Map)['liker_id'] as String,
+    ];
+    if (likerIds.isEmpty) return [];
+    final profiles = await SupabaseConfig.db
+        .from('profiles')
+        .select()
+        .inFilter('id', likerIds);
+    return [
+      for (final p in profiles as List) Profile.fromMap(p as Map<String, dynamic>)
+    ];
+  }
 }
 
 /// Mock-mode: sample matches, no writes.
@@ -67,4 +92,7 @@ class PreviewMatchesRepository implements MatchesRepository {
 
   @override
   Future<int> likesYouCount() async => 12;
+
+  @override
+  Future<List<Profile>> whoLikedMe() async => sampleProfiles.take(3).toList();
 }

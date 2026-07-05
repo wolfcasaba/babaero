@@ -10,7 +10,16 @@ import '../../core/theme/theme_mode_provider.dart';
 import '../../core/widgets/brand_widgets.dart';
 import '../auth/data/auth_provider.dart';
 import '../discover/data/discover_provider.dart';
+import '../discover/widgets/discover_filter_sheet.dart';
+import '../premium/gold_screen.dart';
+import '../safety/blocked_users_screen.dart';
+import '../settings/help_screen.dart';
+import '../settings/notifications_screen.dart';
+import '../settings/translation_settings_screen.dart';
 import 'data/profile_provider.dart';
+import 'edit_profile_screen.dart';
+import 'onboarding_setup_screen.dart';
+import 'photo_gallery_screen.dart';
 import 'verification_screen.dart';
 
 Future<void> _pickAndUploadAvatar(BuildContext context, WidgetRef ref) async {
@@ -55,9 +64,9 @@ class MyProfileScreen extends ConsumerWidget {
         actions: [
           IconButton(
             icon: Icon(isDark ? LucideIcons.sun : LucideIcons.moon),
+            tooltip: isDark ? 'Light mode' : 'Dark mode',
             onPressed: () => ref.read(themeModeProvider.notifier).toggle(),
           ),
-          IconButton(icon: const Icon(LucideIcons.settings), onPressed: () {}),
           const SizedBox(width: 4),
         ],
       ),
@@ -114,7 +123,12 @@ class MyProfileScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 20),
-          _PremiumCard(),
+          GestureDetector(
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const BabaeroGoldScreen()),
+            ),
+            child: _PremiumCard(),
+          ),
           const SizedBox(height: 20),
           _VerificationRow(verified: verified),
           const SizedBox(height: 12),
@@ -125,6 +139,30 @@ class MyProfileScreen extends ConsumerWidget {
               (LucideIcons.languages, 'Translation settings'),
               (LucideIcons.slidersHorizontal, 'Discovery preferences'),
             ],
+            onTap: (label) {
+              switch (label) {
+                case 'Edit profile':
+                  if (me != null) {
+                    Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => EditProfileScreen(profile: me)));
+                  } else {
+                    Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const OnboardingSetupScreen()));
+                  }
+                case 'My photos':
+                  Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const PhotoGalleryScreen()));
+                case 'Discovery preferences':
+                  showDiscoverFilterSheet(context);
+                case 'Translation settings':
+                  Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const TranslationSettingsScreen()));
+                default:
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Coming soon.')),
+                  );
+              }
+            },
           ),
           const SizedBox(height: 12),
           _SettingsGroup(
@@ -135,8 +173,18 @@ class MyProfileScreen extends ConsumerWidget {
               (LucideIcons.logOut, 'Log out'),
             ],
             onTap: (label) async {
-              if (label == 'Log out') {
-                await ref.read(authRepositoryProvider).signOut();
+              switch (label) {
+                case 'Log out':
+                  await ref.read(authRepositoryProvider).signOut();
+                case 'Safety & privacy':
+                  Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const BlockedUsersScreen()));
+                case 'Notifications':
+                  Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const NotificationsScreen()));
+                case 'Help & support':
+                  Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const HelpScreen()));
               }
             },
           ),

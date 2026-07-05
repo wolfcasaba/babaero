@@ -21,3 +21,9 @@ final likesYouCountProvider = FutureProvider<int>((ref) {
   ref.watch(currentUserIdProvider);
   return ref.watch(matchesRepositoryProvider).likesYouCount();
 });
+
+/// The profiles who liked the current user.
+final whoLikedMeProvider = FutureProvider<List<Profile>>((ref) {
+  ref.watch(currentUserIdProvider);
+  return ref.watch(matchesRepositoryProvider).whoLikedMe();
+});

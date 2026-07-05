@@ -30,6 +30,10 @@ class AppColors {
   static const Color online = Color(0xFF43D67C);
   static const Color danger = Color(0xFFE5484D);
 
+  // Photo scrims — dark wash behind text over an image (bottom of hero cards).
+  static const Color scrim = Color(0xB3000000); // ~70% black
+  static const Color scrimStrong = Color(0xCC000000); // ~80% black
+
   // Light surfaces
   static const Color bgLight = Color(0xFFFFF6F3); // warm off-white
   static const Color surfaceLight = Color(0xFFFFFFFF);

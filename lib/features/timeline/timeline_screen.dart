@@ -5,6 +5,8 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/brand_widgets.dart';
+import '../stories/data/stories_provider.dart';
+import '../stories/widgets/stories_bar.dart';
 import 'compose_post_screen.dart';
 import 'data/timeline_models.dart';
 import 'data/timeline_provider.dart';
@@ -22,13 +24,6 @@ class TimelineScreen extends ConsumerWidget {
       appBar: AppBar(
         titleSpacing: 16,
         title: const BrandWordmark(fontSize: 24),
-        actions: [
-          IconButton(
-            icon: const Icon(LucideIcons.messageCircle),
-            onPressed: () {},
-          ),
-          const SizedBox(width: 8),
-        ],
       ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: AppColors.primary,
@@ -37,28 +32,32 @@ class TimelineScreen extends ConsumerWidget {
         child: const Icon(LucideIcons.penLine),
       ),
       body: RefreshIndicator(
-        onRefresh: () async => ref.invalidate(feedProvider),
+        onRefresh: () async {
+          ref.invalidate(feedProvider);
+          ref.invalidate(storiesProvider);
+        },
         child: feedAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) => ListView(
             children: [
-              const SizedBox(height: 120),
+              const StoriesBar(),
+              const SizedBox(height: 80),
               Center(child: Text('Feed unavailable.\n$e',
                   textAlign: TextAlign.center)),
             ],
           ),
           data: (posts) {
-            if (posts.isEmpty) {
-              return _EmptyFeed(onCompose: () => _openCompose(context, ref));
-            }
             return ListView.builder(
               padding: const EdgeInsets.only(top: 6, bottom: 88),
-              itemCount: posts.length + 1,
+              itemCount: posts.length + 2,
               itemBuilder: (_, i) {
-                if (i == 0) {
-                  return _ComposePrompt(onTap: () => _openCompose(context, ref));
+                if (i == 0) return const StoriesBar();
+                if (i == 1) {
+                  return posts.isEmpty
+                      ? _EmptyFeedBody(onCompose: () => _openCompose(context, ref))
+                      : _ComposePrompt(onTap: () => _openCompose(context, ref));
                 }
-                return _PostCardEntry(post: posts[i - 1]);
+                return _PostCardEntry(post: posts[i - 2]);
               },
             );
           },
@@ -125,19 +124,17 @@ class _ComposePrompt extends StatelessWidget {
   }
 }
 
-class _EmptyFeed extends StatelessWidget {
+class _EmptyFeedBody extends StatelessWidget {
   final VoidCallback onCompose;
-  const _EmptyFeed({required this.onCompose});
+  const _EmptyFeedBody({required this.onCompose});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return ListView(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 96, 24, 24),
-          child: Column(
-            children: [
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 64, 24, 24),
+      child: Column(
+        children: [
               Icon(LucideIcons.newspaper, size: 56, color: cs.outline),
               const SizedBox(height: 16),
               Text('Your feed is empty',
@@ -156,10 +153,8 @@ class _EmptyFeed extends StatelessWidget {
                   onPressed: onCompose,
                 ),
               ),
-            ],
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

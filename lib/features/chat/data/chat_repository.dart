@@ -1,4 +1,7 @@
+import 'dart:typed_data';
 import 'dart:ui' show Color;
+
+import 'package:supabase_flutter/supabase_flutter.dart' show FileOptions;
 
 import '../../../core/supabase/supabase_config.dart';
 import '../../discover/data/profile_models.dart';
@@ -91,6 +94,7 @@ class ChatRepository {
     String? translatedBody,
     String? sourceLang,
     String? targetLang,
+    String? imageUrl,
   }) async {
     final me = myId;
     if (me == null) return;
@@ -101,7 +105,25 @@ class ChatRepository {
       'translated_body': ?translatedBody,
       'source_lang': ?sourceLang,
       'target_lang': ?targetLang,
+      'image_url': ?imageUrl,
     });
+  }
+
+  /// Upload a chat image to the sender's folder in the public `chat` bucket.
+  Future<String?> uploadImage(Uint8List bytes, {String ext = 'jpg'}) async {
+    final me = myId;
+    if (me == null) return null;
+    final path = '$me/${DateTime.now().millisecondsSinceEpoch}.$ext';
+    final storage = SupabaseConfig.client.storage.from('chat');
+    await storage.uploadBinary(
+      path,
+      bytes,
+      fileOptions: FileOptions(
+        upsert: true,
+        contentType: ext == 'png' ? 'image/png' : 'image/jpeg',
+      ),
+    );
+    return storage.getPublicUrl(path);
   }
 
   /// Realtime stream of the conversation's messages (ordered).

@@ -1,0 +1,360 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+
+import '../../core/theme/app_colors.dart';
+import '../../core/widgets/brand_widgets.dart';
+import '../discover/data/discover_provider.dart';
+import '../discover/data/profile_models.dart';
+import 'data/profile_provider.dart';
+
+const _interestChoices = [
+  'Travel', 'Foodie', 'Beach', 'Karaoke', 'Movies', 'Fitness', 'Cooking',
+  'Faith', 'Family', 'Dogs', 'Cats', 'Photography', 'Books', 'Music',
+  'Hiking', 'Business', 'Dancing', 'Gaming',
+];
+
+/// Edit the signed-in member's own profile. Pre-filled from [profile]; writes
+/// the same babaero.profiles row via ProfileRepository.upsert.
+class EditProfileScreen extends ConsumerStatefulWidget {
+  final Profile profile;
+  const EditProfileScreen({super.key, required this.profile});
+
+  @override
+  ConsumerState<EditProfileScreen> createState() => _EditProfileScreenState();
+}
+
+class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
+  late final _name = TextEditingController(text: widget.profile.name);
+  late final _age = TextEditingController(
+      text: widget.profile.age > 0 ? widget.profile.age.toString() : '');
+  late final _country = TextEditingController(text: widget.profile.country);
+  late final _city = TextEditingController(text: widget.profile.city);
+  late final _languages = TextEditingController(text: widget.profile.languages);
+  late final _bio = TextEditingController(text: widget.profile.bio);
+  late String _role = widget.profile.role ?? 'foreigner';
+  late String _gender = widget.profile.gender ?? 'male';
+  late final Set<String> _interests = {...widget.profile.interests};
+  late final List<ProfilePrompt> _prompts = [...widget.profile.prompts];
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    for (final c in [_name, _age, _country, _city, _languages, _bio]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_name.text.trim().isEmpty) {
+      setState(() => _error = 'Please enter your name.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await ref.read(profileRepositoryProvider).upsert(
+            name: _name.text.trim(),
+            age: int.tryParse(_age.text.trim()),
+            gender: _gender,
+            role: _role,
+            country: _country.text.trim(),
+            city: _city.text.trim(),
+            languages: _languages.text.trim(),
+            bio: _bio.text.trim(),
+            interests: _interests.toList(),
+            prompts: _prompts,
+          );
+      ref.invalidate(myProfileProvider);
+      ref.invalidate(discoverProfilesProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile updated.')),
+        );
+        Navigator.of(context).pop();
+      }
+    } catch (_) {
+      setState(() => _error = 'Could not save your profile. Try again.');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Edit profile')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _label('I am a'),
+            _SegToggle(
+              options: const {'foreigner': 'Foreigner', 'local': 'Filipina/o'},
+              value: _role,
+              onChanged: (v) => setState(() => _role = v),
+            ),
+            const SizedBox(height: 16),
+            _label('Gender'),
+            _SegToggle(
+              options: const {
+                'male': 'Male',
+                'female': 'Female',
+                'other': 'Other'
+              },
+              value: _gender,
+              onChanged: (v) => setState(() => _gender = v),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _name,
+              decoration: const InputDecoration(hintText: 'Display name'),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _age,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(hintText: 'Age'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _country,
+                    decoration: const InputDecoration(hintText: 'Country'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _city,
+              decoration: const InputDecoration(hintText: 'City'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _languages,
+              decoration: const InputDecoration(
+                  hintText: 'Languages (e.g. English, Tagalog)'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _bio,
+              maxLines: 3,
+              decoration: const InputDecoration(hintText: 'Short bio'),
+            ),
+            const SizedBox(height: 20),
+            _label('Interests'),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _interestChoices.map((t) {
+                final on = _interests.contains(t);
+                return FilterChip(
+                  label: Text(t),
+                  selected: on,
+                  showCheckmark: false,
+                  backgroundColor:
+                      Theme.of(context).colorScheme.surfaceContainerHighest,
+                  selectedColor: AppColors.primary,
+                  side: BorderSide.none,
+                  labelStyle: TextStyle(
+                    color: on
+                        ? Colors.white
+                        : Theme.of(context).colorScheme.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  onSelected: (_) => setState(
+                    () => on ? _interests.remove(t) : _interests.add(t),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 20),
+            _label('Prompts'),
+            Text('Answer a few — they give matches something to open with.',
+                style: TextStyle(color: Theme.of(context).colorScheme.outline)),
+            const SizedBox(height: 8),
+            for (var i = 0; i < _prompts.length; i++)
+              _PromptCard(
+                prompt: _prompts[i],
+                onDelete: () => setState(() => _prompts.removeAt(i)),
+              ),
+            if (_prompts.length < 3)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: _addPrompt,
+                  icon: const Icon(LucideIcons.plus, size: 18),
+                  label: const Text('Add prompt'),
+                ),
+              ),
+            if (_error != null) ...[
+              const SizedBox(height: 16),
+              Text(_error!, style: const TextStyle(color: AppColors.danger)),
+            ],
+            const SizedBox(height: 24),
+            _busy
+                ? const Center(child: CircularProgressIndicator())
+                : GradientButton(label: 'Save changes', onPressed: _save),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _addPrompt() async {
+    final used = _prompts.map((p) => p.question).toSet();
+    final available =
+        kPromptQuestions.where((q) => !used.contains(q)).toList();
+    if (available.isEmpty) return;
+    final question = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: Text('Pick a prompt',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+            ),
+            for (final q in available)
+              ListTile(title: Text(q), onTap: () => Navigator.pop(ctx, q)),
+          ],
+        ),
+      ),
+    );
+    if (question == null || !mounted) return;
+    final controller = TextEditingController();
+    final answer = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(question),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 140,
+          maxLines: 3,
+          decoration: const InputDecoration(hintText: 'Your answer…'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (answer == null || answer.isEmpty) return;
+    setState(() => _prompts.add(ProfilePrompt(question: question, answer: answer)));
+  }
+
+  Widget _label(String t) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Text(t,
+            style: GoogleFonts.poppins(
+                fontSize: 14, fontWeight: FontWeight.w600)),
+      );
+}
+
+class _PromptCard extends StatelessWidget {
+  final ProfilePrompt prompt;
+  final VoidCallback onDelete;
+  const _PromptCard({required this.prompt, required this.onDelete});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(prompt.question,
+                      style: TextStyle(fontSize: 12.5, color: cs.outline)),
+                  const SizedBox(height: 3),
+                  Text(prompt.answer,
+                      style: GoogleFonts.poppins(
+                          fontSize: 15, fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+            IconButton(
+              icon: const Icon(LucideIcons.x, size: 18),
+              onPressed: onDelete,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SegToggle extends StatelessWidget {
+  final Map<String, String> options;
+  final String value;
+  final ValueChanged<String> onChanged;
+  const _SegToggle({
+    required this.options,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: options.entries.map((e) {
+          final on = e.key == value;
+          return Expanded(
+            child: GestureDetector(
+              onTap: () => onChanged(e.key),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  gradient: on ? AppColors.brandGradient : null,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  e.value,
+                  style: TextStyle(
+                    color: on ? Colors.white : cs.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}

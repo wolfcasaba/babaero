@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/supabase/supabase_config.dart';
+import '../../safety/data/safety_provider.dart';
+import 'discover_filters.dart';
 import 'discover_repository.dart';
 import 'profile_models.dart';
 
@@ -13,7 +15,14 @@ final discoverRepositoryProvider = Provider<DiscoverRepository>((ref) {
   return PreviewDiscoverRepository();
 });
 
-/// The list of profiles to browse in Discover.
-final discoverProfilesProvider = FutureProvider<List<Profile>>((ref) {
-  return ref.watch(discoverRepositoryProvider).browse();
+/// The list of profiles to browse in Discover — minus anyone the user blocked,
+/// minus anyone excluded by the active filters.
+final discoverProfilesProvider = FutureProvider<List<Profile>>((ref) async {
+  final blocked = await ref.watch(blockedIdsProvider.future);
+  final filters = ref.watch(discoverFiltersProvider);
+  final profiles = await ref.watch(discoverRepositoryProvider).browse();
+  return [
+    for (final p in profiles)
+      if (!blocked.contains(p.id) && filters.matches(p)) p,
+  ];
 });

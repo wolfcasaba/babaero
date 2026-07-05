@@ -1,18 +1,19 @@
 import '../../discover/data/profile_models.dart';
 
-/// One chat message.
-class Message {
+/// One group chat message. Mirrors [Message] but keyed by group_id, so the
+/// same bubble UI and inline-translation logic apply.
+class GroupMessage {
   final String id;
-  final String conversationId;
+  final String groupId;
   final String senderId;
   final String body;
   final String? translatedBody;
   final String? imageUrl;
   final DateTime createdAt;
 
-  const Message({
+  const GroupMessage({
     required this.id,
-    required this.conversationId,
+    required this.groupId,
     required this.senderId,
     required this.body,
     required this.createdAt,
@@ -20,9 +21,9 @@ class Message {
     this.imageUrl,
   });
 
-  factory Message.fromMap(Map<String, dynamic> m) => Message(
+  factory GroupMessage.fromMap(Map<String, dynamic> m) => GroupMessage(
         id: m['id'].toString(),
-        conversationId: m['conversation_id'].toString(),
+        groupId: m['group_id'].toString(),
         senderId: m['sender_id'].toString(),
         body: (m['body'] ?? '').toString(),
         translatedBody: m['translated_body'] as String?,
@@ -34,17 +35,25 @@ class Message {
   bool mine(String? myId) => senderId == myId;
 }
 
-/// A conversation row joined with the other member's profile + last message.
-class ConversationView {
+/// A group row joined with its member profiles + last message, for the list.
+class GroupConversationView {
   final String id;
-  final Profile other;
-  final Message? lastMessage;
+  final String title;
+  final String? imageUrl;
+
+  /// Other members (excludes the current user) — used for avatars/subtitle.
+  final List<Profile> others;
+  final int memberCount;
+  final GroupMessage? lastMessage;
   final DateTime lastMessageAt;
 
-  const ConversationView({
+  const GroupConversationView({
     required this.id,
-    required this.other,
+    required this.title,
+    required this.others,
+    required this.memberCount,
     required this.lastMessageAt,
+    this.imageUrl,
     this.lastMessage,
   });
 }

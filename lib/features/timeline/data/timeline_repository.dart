@@ -18,6 +18,9 @@ abstract class TimelineRepository {
   /// Create a post. At least one of [content] / [imageUrl] must be non-empty.
   Future<void> createPost({required String content, String? imageUrl});
 
+  /// Delete one of the current user's own posts.
+  Future<void> deletePost(String postId);
+
   /// Like ([liked] = true) or unlike a post.
   Future<void> setLiked(String postId, bool liked);
 
@@ -96,6 +99,17 @@ class SupabaseTimelineRepository implements TimelineRepository {
       'content': content,
       'image_url': ?imageUrl,
     });
+  }
+
+  @override
+  Future<void> deletePost(String postId) async {
+    final uid = _uid;
+    if (uid == null) return;
+    await SupabaseConfig.db
+        .from('posts')
+        .delete()
+        .eq('id', postId)
+        .eq('author_id', uid);
   }
 
   @override
@@ -188,6 +202,11 @@ class PreviewTimelineRepository implements TimelineRepository {
         createdAt: DateTime.now(),
       ),
     );
+  }
+
+  @override
+  Future<void> deletePost(String postId) async {
+    _seed.removeWhere((p) => p.id == postId);
   }
 
   @override

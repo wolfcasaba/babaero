@@ -1,5 +1,33 @@
 import 'dart:ui';
 
+/// Predefined prompt questions members answer on their profile.
+const List<String> kPromptQuestions = [
+  'My ideal first date is…',
+  'A perfect weekend for me…',
+  'The way to my heart is…',
+  'My simple pleasures…',
+  'I\'m looking for someone who…',
+  'Ask me about…',
+  'My favorite Filipino dish is…',
+  'A fact that surprises people…',
+  'My love language is…',
+  'We\'ll get along if…',
+];
+
+/// One profile prompt (a chosen question + the member's answer).
+class ProfilePrompt {
+  final String question;
+  final String answer;
+  const ProfilePrompt({required this.question, required this.answer});
+
+  factory ProfilePrompt.fromMap(Map<String, dynamic> m) => ProfilePrompt(
+        question: (m['q'] ?? '').toString(),
+        answer: (m['a'] ?? '').toString(),
+      );
+
+  Map<String, dynamic> toMap() => {'q': question, 'a': answer};
+}
+
 /// A discover-able member profile. Parsed at the boundary; plain Dart.
 class Profile {
   final String id;
@@ -13,6 +41,20 @@ class Profile {
   final bool online;
   final int distanceKm;
   final String languages; // e.g. "English, Tagalog, Cebuano"
+
+  /// 'male' | 'female' | 'other' — used by the profile editor. Nullable
+  /// because the discover/browse reads don't need it.
+  final String? gender;
+
+  /// 'foreigner' | 'local'. Same note as [gender].
+  final String? role;
+
+  /// Hinge-style prompt cards (question + answer).
+  final List<ProfilePrompt> prompts;
+
+  /// Babaero Gold member. Free launch → false for everyone; the premium gates
+  /// read this so membership can be switched on later without code changes.
+  final bool isGold;
 
   /// All photo URLs (public storage URLs). First = primary avatar.
   final List<String> photos;
@@ -37,6 +79,10 @@ class Profile {
     required this.colorA,
     required this.colorB,
     this.photos = const [],
+    this.gender,
+    this.role,
+    this.prompts = const [],
+    this.isGold = false,
   });
 
   /// Primary photo URL, or null when the member has none.
@@ -52,8 +98,13 @@ class Profile {
     final palette = _paletteFor(id);
     final interests = (m['interests'] as List?)?.cast<String>() ?? const [];
     final photos = (m['photos'] as List?)?.cast<String>() ?? const [];
+    final prompts = [
+      for (final p in (m['prompts'] as List?) ?? const [])
+        if (p is Map<String, dynamic>) ProfilePrompt.fromMap(p),
+    ];
     return Profile(
       photos: photos,
+      prompts: prompts,
       id: id,
       name: (m['name'] ?? '').toString(),
       age: (m['age'] as num?)?.toInt() ?? 0,
@@ -65,6 +116,9 @@ class Profile {
       online: m['is_online'] == true,
       distanceKm: (m['distance_km'] as num?)?.toInt() ?? 0,
       languages: (m['languages'] ?? '').toString(),
+      gender: m['gender'] as String?,
+      role: m['role'] as String?,
+      isGold: m['is_gold'] == true,
       colorA: palette.$1,
       colorB: palette.$2,
     );

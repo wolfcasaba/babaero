@@ -46,3 +46,7 @@ app.*.map.json
 
 # Local code-RAG index (regenerate with: node tools/flutter-rag.mjs --reindex)
 dev-tools/flutter-code-index.json
+
+# Local-only dev tooling (machine-specific)
+.claude/
+.mcp.json

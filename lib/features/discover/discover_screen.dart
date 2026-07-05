@@ -8,9 +8,14 @@ import '../../core/theme/app_colors.dart';
 import '../../core/widgets/brand_widgets.dart';
 import '../matches/data/matches_provider.dart';
 import '../matches/widgets/match_dialog.dart';
+import '../profile/data/profile_provider.dart';
 import '../profile/profile_detail_screen.dart';
+import 'data/compatibility.dart';
+import 'data/discover_filters.dart';
 import 'data/discover_provider.dart';
 import 'data/profile_models.dart';
+import 'widgets/compat_badge.dart';
+import 'widgets/discover_filter_sheet.dart';
 
 /// The main browse surface — one hero profile card at a time with
 /// pass / like / super-like actions and a filter row.
@@ -62,8 +67,13 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
         title: const BrandWordmark(fontSize: 24),
         actions: [
           IconButton(
-            icon: const Icon(LucideIcons.slidersHorizontal),
-            onPressed: () {},
+            icon: Badge(
+              isLabelVisible: ref.watch(discoverFiltersProvider).activeCount > 0,
+              label: Text('${ref.watch(discoverFiltersProvider).activeCount}'),
+              child: const Icon(LucideIcons.slidersHorizontal),
+            ),
+            tooltip: 'Filters',
+            onPressed: () => showDiscoverFilterSheet(context),
           ),
           const SizedBox(width: 8),
         ],
@@ -81,10 +91,12 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
                   return const _EmptyDiscover();
                 }
                 final p = profiles[_current % profiles.length];
+                final me = ref.watch(myProfileProvider).asData?.value;
                 return Padding(
                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
                   child: _ProfileCard(
                     profile: p,
+                    compat: compatibility(me, p),
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => ProfileDetailScreen(profile: p),
@@ -162,37 +174,96 @@ class _EmptyDiscover extends StatelessWidget {
   }
 }
 
-class _FilterRow extends StatelessWidget {
-  static const _filters = ['Nearby', 'Verified', 'Online now', '18-30', 'Cebu'];
-
+class _FilterRow extends ConsumerWidget {
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final f = ref.watch(discoverFiltersProvider);
+    final notifier = ref.read(discoverFiltersProvider.notifier);
+    final ageActive = f.minAge != kMinFilterAge || f.maxAge != kMaxFilterAge;
+    const genderLabels = {'female': 'Women', 'male': 'Men', 'other': 'Other'};
     return SizedBox(
       height: 46,
-      child: ListView.separated(
+      child: ListView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: _filters.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (_, i) {
-          final selected = i == 1; // "Verified" pre-selected for the design
-          return Center(
-            child: FilterChip(
-              label: Text(_filters[i]),
-              selected: selected,
-              showCheckmark: false,
-              selectedColor: AppColors.primary,
-              labelStyle: TextStyle(
-                color: selected
-                    ? Colors.white
-                    : Theme.of(context).colorScheme.onSurface,
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
+        children: [
+          _toggleChip(context, 'Verified', f.verifiedOnly,
+              (_) => notifier.toggleVerified()),
+          const SizedBox(width: 8),
+          _toggleChip(context, 'Online now', f.onlineOnly,
+              (_) => notifier.toggleOnline()),
+          const SizedBox(width: 8),
+          _actionChip(
+            context,
+            f.gender == null ? 'Everyone' : genderLabels[f.gender] ?? 'Everyone',
+            f.gender != null,
+            () => showDiscoverFilterSheet(context),
+          ),
+          const SizedBox(width: 8),
+          _actionChip(
+            context,
+            ageActive ? 'Age ${f.minAge}–${f.maxAge}' : 'Any age',
+            ageActive,
+            () => showDiscoverFilterSheet(context),
+          ),
+          if (f.city != null && f.city!.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            _actionChip(context, '📍 ${f.city}', true,
+                () => showDiscoverFilterSheet(context)),
+          ],
+          if (!f.isDefault) ...[
+            const SizedBox(width: 8),
+            Center(
+              child: ActionChip(
+                avatar: const Icon(LucideIcons.x, size: 15),
+                label: const Text('Clear'),
+                onPressed: notifier.reset,
               ),
-              onSelected: (_) {},
             ),
-          );
-        },
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _toggleChip(BuildContext context, String label, bool selected,
+      ValueChanged<bool> onSelected) {
+    return Center(
+      child: FilterChip(
+        label: Text(label),
+        selected: selected,
+        showCheckmark: false,
+        selectedColor: AppColors.primary,
+        labelStyle: TextStyle(
+          color: selected
+              ? Colors.white
+              : Theme.of(context).colorScheme.onSurface,
+          fontWeight: FontWeight.w600,
+          fontSize: 13,
+        ),
+        onSelected: onSelected,
+      ),
+    );
+  }
+
+  Widget _actionChip(
+      BuildContext context, String label, bool active, VoidCallback onTap) {
+    return Center(
+      child: ActionChip(
+        avatar: Icon(LucideIcons.slidersHorizontal,
+            size: 15,
+            color: active
+                ? AppColors.primary
+                : Theme.of(context).colorScheme.onSurface),
+        label: Text(label),
+        labelStyle: TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: 13,
+          color: active
+              ? AppColors.primary
+              : Theme.of(context).colorScheme.onSurface,
+        ),
+        onPressed: onTap,
       ),
     );
   }
@@ -200,8 +271,9 @@ class _FilterRow extends StatelessWidget {
 
 class _ProfileCard extends StatelessWidget {
   final Profile profile;
+  final Compat? compat;
   final VoidCallback onTap;
-  const _ProfileCard({required this.profile, required this.onTap});
+  const _ProfileCard({required this.profile, required this.onTap, this.compat});
 
   @override
   Widget build(BuildContext context) {
@@ -246,7 +318,7 @@ class _ProfileCard extends StatelessWidget {
                 gradient: LinearGradient(
                   begin: Alignment.center,
                   end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, Color(0xCC000000)],
+                  colors: [Colors.transparent, AppColors.scrimStrong],
                 ),
               ),
             ),
@@ -260,6 +332,13 @@ class _ProfileCard extends StatelessWidget {
                 ],
               ),
             ),
+            // Top-left compatibility badge.
+            if (compat != null && compat!.hasSignal)
+              Positioned(
+                top: 16,
+                left: 16,
+                child: CompatBadge(percent: compat!.percent),
+              ),
             // Bottom info.
             Positioned(
               left: 20,
