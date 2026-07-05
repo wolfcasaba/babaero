@@ -284,8 +284,10 @@ class _ProfileDetailScreenState extends ConsumerState<ProfileDetailScreen> {
                           size: 16, color: AppColors.secondary),
                       const SizedBox(width: 4),
                       Expanded(
-                        child: Text('${profile.city}, ${profile.country} · '
-                            '${profile.distanceKm} km'),
+                        // Append distance only when known (avoid a phantom 0 km).
+                        child: Text(profile.distanceKm > 0
+                            ? '${profile.city}, ${profile.country} · ${profile.distanceKm} km'
+                            : '${profile.city}, ${profile.country}'),
                       ),
                     ],
                   ),

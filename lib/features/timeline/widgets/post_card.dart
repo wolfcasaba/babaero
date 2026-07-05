@@ -42,6 +42,23 @@ class _PostCardState extends ConsumerState<PostCard> {
   bool _translating = false;
   bool _showTranslation = false;
 
+  @override
+  void didUpdateWidget(covariant PostCard old) {
+    super.didUpdateWidget(old);
+    // The card State is reused across feed refreshes (keyed by post id), so
+    // re-sync the optimistic like state from the fresh post — otherwise a
+    // server-corrected count or a like made elsewhere would stay stale. Skip
+    // while a like write is in flight so we don't clobber the optimistic value.
+    if (!_busy && old.post.id == widget.post.id) {
+      if (widget.post.likedByMe != old.post.likedByMe) {
+        _liked = widget.post.likedByMe;
+      }
+      if (widget.post.likeCount != old.post.likeCount) {
+        _likeCount = widget.post.likeCount;
+      }
+    }
+  }
+
   Future<void> _toggleLike() async {
     if (_busy) return;
     setState(() {

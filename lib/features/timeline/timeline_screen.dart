@@ -13,12 +13,41 @@ import 'data/timeline_provider.dart';
 import 'widgets/post_card.dart';
 
 /// The social timeline — a Facebook-style feed of member posts.
-class TimelineScreen extends ConsumerWidget {
+class TimelineScreen extends ConsumerStatefulWidget {
   const TimelineScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<TimelineScreen> createState() => _TimelineScreenState();
+}
+
+class _TimelineScreenState extends ConsumerState<TimelineScreen> {
+  final _scroll = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scroll.removeListener(_onScroll);
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    // Load the next page as the user nears the bottom (infinite scroll).
+    if (_scroll.position.pixels >=
+        _scroll.position.maxScrollExtent - 600) {
+      ref.read(feedProvider.notifier).loadMore();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final feedAsync = ref.watch(feedProvider);
+    final reachedEnd = ref.watch(feedProvider.notifier).reachedEnd;
 
     return Scaffold(
       appBar: AppBar(
@@ -28,7 +57,7 @@ class TimelineScreen extends ConsumerWidget {
       floatingActionButton: FloatingActionButton(
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
-        onPressed: () => _openCompose(context, ref),
+        onPressed: _openCompose,
         child: const Icon(LucideIcons.penLine),
       ),
       body: RefreshIndicator(
@@ -47,15 +76,30 @@ class TimelineScreen extends ConsumerWidget {
             ],
           ),
           data: (posts) {
+            // Trailing slot: a loader while more pages may exist (and there's
+            // at least one post to page from).
+            final showLoader = posts.isNotEmpty && !reachedEnd;
             return ListView.builder(
+              controller: _scroll,
               padding: const EdgeInsets.only(top: 6, bottom: 88),
-              itemCount: posts.length + 2,
+              itemCount: posts.length + 2 + (showLoader ? 1 : 0),
               itemBuilder: (_, i) {
                 if (i == 0) return const StoriesBar();
                 if (i == 1) {
                   return posts.isEmpty
-                      ? _EmptyFeedBody(onCompose: () => _openCompose(context, ref))
-                      : _ComposePrompt(onTap: () => _openCompose(context, ref));
+                      ? _EmptyFeedBody(onCompose: _openCompose)
+                      : _ComposePrompt(onTap: _openCompose);
+                }
+                if (i == posts.length + 2) {
+                  // Trailing loader.
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Center(
+                        child: SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2))),
+                  );
                 }
                 return _PostCardEntry(post: posts[i - 2]);
               },
@@ -66,7 +110,7 @@ class TimelineScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _openCompose(BuildContext context, WidgetRef ref) async {
+  Future<void> _openCompose() async {
     final posted = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => const ComposePostScreen()),
     );

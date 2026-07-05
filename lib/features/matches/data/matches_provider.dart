@@ -27,3 +27,9 @@ final whoLikedMeProvider = FutureProvider<List<Profile>>((ref) {
   ref.watch(currentUserIdProvider);
   return ref.watch(matchesRepositoryProvider).whoLikedMe();
 });
+
+/// Ids the current user has already liked — used to filter the Discover deck.
+final likedIdsProvider = FutureProvider<Set<String>>((ref) {
+  ref.watch(currentUserIdProvider);
+  return ref.watch(matchesRepositoryProvider).likedIds();
+});

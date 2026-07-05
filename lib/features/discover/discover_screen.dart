@@ -27,29 +27,43 @@ class DiscoverScreen extends ConsumerStatefulWidget {
 
 class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
   final _deck = SwipeDeckController();
-  bool _acting = false;
+
+  // Guards only the match dialog (not the like itself) so two quick mutual
+  // matches don't stack dialogs. Likes fire independently and are never dropped.
+  bool _dialogOpen = false;
 
   // Bumped on a manual "caught up" refresh so the deck re-deals from the top
   // even when the reloaded batch is identical (mock mode / small pools).
   int _deal = 0;
 
   Future<void> _like(Profile p, {bool superLike = false}) async {
-    if (_acting) return;
-    _acting = true;
     try {
       final matched = await ref
           .read(matchesRepositoryProvider)
           .like(p.id, superLike: superLike);
       ref.invalidate(matchesProvider);
       ref.invalidate(likesYouCountProvider);
-      if (matched && mounted) {
+      if (matched && mounted && !_dialogOpen) {
+        _dialogOpen = true;
         await showMatchDialog(context, p);
+        _dialogOpen = false;
       }
     } catch (_) {
-      // silent — the deck already advanced optimistically
-    } finally {
-      _acting = false;
+      // The deck already advanced; tell the user the like didn't go through.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not send your like — try again.')),
+        );
+      }
     }
+  }
+
+  void _reload() {
+    // A deliberate re-deal: refresh the exclusion sets so freshly liked/blocked
+    // members drop out, then rebuild the deck from the top.
+    ref.invalidate(likedIdsProvider);
+    ref.invalidate(discoverProfilesProvider);
+    setState(() => _deal++);
   }
 
   void _onAction(Profile p, SwipeAction action) {
@@ -108,12 +122,7 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
                       builder: (_) => ProfileDetailScreen(profile: p),
                     ),
                   ),
-                  caughtUp: _CaughtUp(
-                    onRefresh: () {
-                      ref.invalidate(discoverProfilesProvider);
-                      setState(() => _deal++);
-                    },
-                  ),
+                  caughtUp: _CaughtUp(onRefresh: _reload),
                 );
               },
             ),

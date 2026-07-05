@@ -47,7 +47,9 @@ class DiscoverFilters {
   bool matches(Profile p) {
     if (verifiedOnly && !p.verified) return false;
     if (onlineOnly && !p.online) return false;
-    if (gender != null && p.gender != null && p.gender != gender) return false;
+    // Gender filter is a hard constraint: when the user asks for a specific
+    // gender, profiles that don't declare it (null) are excluded too.
+    if (gender != null && p.gender != gender) return false;
     if (city != null && city!.isNotEmpty) {
       if (!p.city.toLowerCase().contains(city!.toLowerCase())) return false;
     }

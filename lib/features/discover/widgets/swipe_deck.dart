@@ -322,7 +322,11 @@ class _CardWithStamps extends StatelessWidget {
                       const SizedBox(width: 4),
                       Flexible(
                         child: Text(
-                          '${profile.city} · ${profile.distanceKm} km away',
+                          // Distance is only shown when we actually have it —
+                          // otherwise fall back to city only (no phantom 0 km).
+                          profile.distanceKm > 0
+                              ? '${profile.city} · ${profile.distanceKm} km away'
+                              : profile.city,
                           style: const TextStyle(color: Colors.white70),
                         ),
                       ),

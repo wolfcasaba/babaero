@@ -113,7 +113,14 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
     final repo = ref.read(chatRepositoryProvider);
     try {
       final convId = await repo.getOrCreateConversationWith(_g.author.id);
-      if (convId == null) return;
+      if (convId == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Couldn't send — please try again.")),
+          );
+        }
+        return;
+      }
       String? src;
       String? target;
       String? translated;
@@ -131,6 +138,8 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
         sourceLang: src,
         targetLang: target,
       );
+      // Surface the new/updated conversation in the Messages list + badge.
+      ref.invalidate(conversationsProvider);
       if (mounted) {
         _reply.clear();
         _replyFocus.unfocus();
@@ -139,7 +148,11 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
         );
       }
     } catch (_) {
-      // ignore — best-effort; the DM screen is the source of truth
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Couldn't send — please try again.")),
+        );
+      }
     } finally {
       if (mounted) setState(() => _sendingReply = false);
     }

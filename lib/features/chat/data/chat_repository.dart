@@ -39,22 +39,35 @@ class ChatRepository {
         (p as Map<String, dynamic>)['id'] as String: Profile.fromMap(p),
     };
 
-    // Last message per conversation (fetch recent, keep first seen per conv).
+    // Last message per conversation. Bounded to the most recent messages so
+    // this never grows unbounded for heavy users — the conv list is sorted by
+    // last_message_at desc, so the newest rows cover the top (visible) convs;
+    // older convs fall back to the "say hi" preview.
     final msgRows = await SupabaseConfig.db
         .from('messages')
         .select()
         .inFilter('conversation_id', convIds)
-        .order('created_at', ascending: false);
+        .order('created_at', ascending: false)
+        .limit(200);
     final lastByConv = <String, Message>{};
-    final unreadByConv = <String, int>{};
     for (final m in msgRows as List) {
       final msg = Message.fromMap(m as Map<String, dynamic>);
       lastByConv.putIfAbsent(msg.conversationId, () => msg);
-      // Incoming + never read → unread. Drives the per-row + tab badges.
-      if (msg.senderId != me && !msg.isRead) {
-        unreadByConv[msg.conversationId] =
-            (unreadByConv[msg.conversationId] ?? 0) + 1;
-      }
+    }
+
+    // Unread counts fetched separately as ONLY the unread incoming rows — a
+    // small set regardless of total history, so the badge stays accurate even
+    // after the last-message fetch above is capped.
+    final unreadRows = await SupabaseConfig.db
+        .from('messages')
+        .select('conversation_id')
+        .inFilter('conversation_id', convIds)
+        .neq('sender_id', me)
+        .isFilter('read_at', null);
+    final unreadByConv = <String, int>{};
+    for (final r in unreadRows as List) {
+      final cid = (r as Map<String, dynamic>)['conversation_id'] as String;
+      unreadByConv[cid] = (unreadByConv[cid] ?? 0) + 1;
     }
 
     return [

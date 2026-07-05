@@ -9,8 +9,9 @@ import 'timeline_models.dart';
 
 /// Reads/writes the social feed: posts, likes, comments.
 abstract class TimelineRepository {
-  /// Newest posts first, with author profile + my-like flag resolved.
-  Future<List<Post>> feed({int limit = 50});
+  /// Newest posts first, with author profile + my-like flag resolved. Pass
+  /// [before] (a post's createdAt) to page older posts for infinite scroll.
+  Future<List<Post>> feed({int limit = 20, DateTime? before});
 
   /// Upload a feed image; returns its public URL (or null when not signed in).
   Future<String?> uploadPostImage(Uint8List bytes, {String ext = 'jpg'});
@@ -36,12 +37,13 @@ class SupabaseTimelineRepository implements TimelineRepository {
   String? get _uid => SupabaseConfig.client.auth.currentUser?.id;
 
   @override
-  Future<List<Post>> feed({int limit = 50}) async {
-    final rows = await SupabaseConfig.db
-        .from('posts')
-        .select()
-        .order('created_at', ascending: false)
-        .limit(limit);
+  Future<List<Post>> feed({int limit = 20, DateTime? before}) async {
+    var query = SupabaseConfig.db.from('posts').select();
+    if (before != null) {
+      query = query.lt('created_at', before.toUtc().toIso8601String());
+    }
+    final rows =
+        await query.order('created_at', ascending: false).limit(limit);
     final postRows = (rows as List).cast<Map<String, dynamic>>();
     if (postRows.isEmpty) return [];
 
@@ -178,8 +180,12 @@ class SupabaseTimelineRepository implements TimelineRepository {
 /// mutation so the feed feels alive in previews / golden screenshots.
 class PreviewTimelineRepository implements TimelineRepository {
   @override
-  Future<List<Post>> feed({int limit = 50}) async =>
-      _seed.take(limit).toList(growable: false);
+  Future<List<Post>> feed({int limit = 20, DateTime? before}) async {
+    // Preview seed is a single page; a paged request (before != null) returns
+    // empty to signal "no more".
+    if (before != null) return const [];
+    return _seed.take(limit).toList(growable: false);
+  }
 
   @override
   Future<String?> uploadPostImage(Uint8List bytes, {String ext = 'jpg'}) async =>

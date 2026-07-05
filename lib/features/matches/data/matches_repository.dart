@@ -14,6 +14,10 @@ abstract class MatchesRepository {
 
   /// The profiles who have liked the current user (the "likes you" list).
   Future<List<Profile>> whoLikedMe();
+
+  /// Ids the current user has already liked — used to keep them out of the
+  /// Discover deck so nobody reappears after a swipe.
+  Future<Set<String>> likedIds();
 }
 
 class SupabaseMatchesRepository implements MatchesRepository {
@@ -76,9 +80,29 @@ class SupabaseMatchesRepository implements MatchesRepository {
         .from('profiles')
         .select()
         .inFilter('id', likerIds);
+    final byId = {
+      for (final p in profiles as List)
+        (p as Map<String, dynamic>)['id'] as String:
+            Profile.fromMap(p),
+    };
+    // Preserve the recency order from the likes query (inFilter loses it).
     return [
-      for (final p in profiles as List) Profile.fromMap(p as Map<String, dynamic>)
+      for (final id in likerIds)
+        if (byId[id] != null) byId[id]!,
     ];
+  }
+
+  @override
+  Future<Set<String>> likedIds() async {
+    final me = _uid;
+    if (me == null) return {};
+    final rows = await SupabaseConfig.db
+        .from('likes')
+        .select('liked_id')
+        .eq('liker_id', me);
+    return {
+      for (final r in rows as List) (r as Map)['liked_id'] as String,
+    };
   }
 }
 
@@ -95,4 +119,7 @@ class PreviewMatchesRepository implements MatchesRepository {
 
   @override
   Future<List<Profile>> whoLikedMe() async => sampleProfiles.take(3).toList();
+
+  @override
+  Future<Set<String>> likedIds() async => {};
 }

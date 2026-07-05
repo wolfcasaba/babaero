@@ -92,15 +92,18 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
       if (!m.mine(myId)) newestIncoming = m;
     }
     if (newestIncoming == null || newestIncoming.id == _lastReadMsgId) return;
-    _lastReadMsgId = newestIncoming.id;
+    final targetId = newestIncoming.id;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
         // No-ops gracefully until migration 14 (mark_conversation_read) is
         // applied to the hosted DB.
         await ref.read(chatRepositoryProvider).markRead(convId);
+        // Only mark this message as handled AFTER the RPC succeeds, so a failed
+        // mark-read retries on the next stream tick instead of sticking unread.
+        _lastReadMsgId = targetId;
         ref.invalidate(conversationsProvider);
       } catch (_) {
-        // ignore — receipts simply stay unread until the RPC exists
+        // ignore — receipts simply stay unread until the RPC exists / succeeds
       }
     });
   }
